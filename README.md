@@ -22,6 +22,9 @@ until they arrive.
 - **No ambient access.** Every request passes an `Authorizer` you supply. The
   default refuses everyone. The caller's key is proven by the QUIC/TLS
   handshake, never taken on its word.
+- **Pairing by QR code.** A back end issues one-time tickets: its address and a
+  short-lived token, as text for a QR code. A device that redeems one joins the
+  back end's paired set, which can be kept in a file across restarts.
 - **No silent third parties.** Relays are off unless you name them — your own
   `iroh-relay`, or the public ones, by explicit choice.
 - **Evolvable payloads.** CBOR maps with named keys: a newer peer can add
@@ -30,21 +33,28 @@ until they arrive.
 ## A taste
 
 ```rust
-use kuri_link::{Allowlist, Client, Methods, Node, Relays, Value};
+use std::time::Duration;
 
-// Back end
+use kuri_link::{Client, Methods, Node, Pairing, PeerSet, Relays, Ticket};
+
+// Back end: serve "calc" to paired devices, and let new ones pair.
+let pairing = Pairing::new(PeerSet::open("paired-devices")?);
 let methods = Methods::new()
     .typed("add", |_caller, (a, b): (i64, i64)| async move { Ok(a + b) });
 let server = Node::builder()
     .relays(Relays::None)
-    .authorizer(Allowlist::new([phone_key]))
+    .pairing(pairing.clone())
     .serve("calc", methods.clone())
     .bind()
     .await?;
+let ticket = pairing.issue(server.addr(), Duration::from_secs(120));
+println!("{ticket}"); // show it as a QR code
 
-// Front end — the back end over the network…
-let remote = phone_node.connect(server.addr(), "calc").await?;
-// …or linked into this process. Same calls either way.
+// Front end: redeem the ticket once and keep the address…
+let scanned: Ticket = qr_text.parse()?;
+let backend = phone_node.pair(&scanned).await?;
+let remote = phone_node.connect(backend, "calc").await?;
+// …or use the back end linked into this process. Same calls either way.
 let local = Client::in_process(methods);
 
 let sum: i64 = remote.call_typed("add", &(2, 3)).await?;
@@ -57,7 +67,7 @@ A Dart/Flutter front end binds to `crates/kuri-link-ffi` through
 ## Layout
 
 ```
-crates/kuri-link      the library: node, client, wire format, hooks
+crates/kuri-link      the library: node, client, wire format, hooks, pairing
 crates/kuri-link-ffi  the plain-typed surface a Dart front end binds to
 docs/design.md        wire format and design decisions
 dart/                 the Dart package (generated; see its README)

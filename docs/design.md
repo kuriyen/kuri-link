@@ -74,12 +74,60 @@ code:  bad_request | unsupported_version | denied | no_such_method | app
   are off unless chosen. Relay operators see metadata (who, when, how much) but
   never content.
 
+## Pairing
+
+A back end usually admits the devices in a `PeerSet`. Opened on a file, the set
+is written through on every change (one key per line, the file replaced
+atomically, mode 0600), so pairings survive restarts. Devices join it by
+redeeming a ticket:
+
+1. **Issue.** The back end calls `Pairing::issue(addr, ttl)`. A ticket is the
+   back end's address (key, sockets, relay) plus a random 128-bit token that
+   works once, before `ttl` runs out (at most a day). Tokens live only in the
+   back end's memory, so a restart withdraws them all.
+2. **Carry.** The ticket travels out of band, normally as a QR code on a screen
+   next to the back end. Its text stays within a QR code's alphanumeric set.
+   Reading it back accepts lower case and ignores whitespace.
+3. **Redeem.** The front end dials the key in the ticket, so the handshake
+   proves it reached that back end and not an impostor. It then calls `pair`
+   on the reserved application `pair` with the token as its credential
+   (`Node::pair`).
+4. **Admit.** The back end spends the token and adds the key the handshake
+   proved. From the next request on, that key is admitted like any paired peer.
+
+```
+ticket = "KURI-LINK:" base32(CBOR map)     base32: RFC 4648 alphabet, no padding
+map    = {"v": 1, "id": bytes(32), "ip": ["addr:port", …]?, "relay": ["url", …]?,
+          "token": bytes(16)}
+```
+
+What keeps it tight:
+
+- **One door.** The token admits its holder to method `pair` of application
+  `pair` and nothing else. Presented anywhere else, it is refused and stays
+  unspent.
+- **One use.** Presented at that door, the token is spent whether or not the
+  pairing then succeeds, so a ticket admits one device at most.
+- **A secret until used.** Whoever presents the ticket first gets in. Keep the
+  TTL short (a minute or two), show the code only when asked, and withdraw it
+  (`revoke`, `revoke_all`) when the code is dismissed.
+- **Unpairing is immediate.** Remove the key from the `PeerSet`. Authorization
+  runs per request, so the device is refused from its next request, even on a
+  connection already open.
+- **It composes.** `NodeBuilder::pairing` guards the pairing door itself. The
+  node's other applications admit the paired set, unless
+  `NodeBuilder::authorizer` names an authorizer of its own, which may consult
+  the set (`Pairing::peers`) or ignore it.
+- **One way.** The back end learns the front end's key; the front end keeps the
+  address `Node::pair` returns. Two nodes that serve each other pair twice.
+
 ## Hooks
 
 | Hook | Default | Purpose |
 |---|---|---|
 | key (`secret_key`, `load_or_create_key`) | ephemeral key | the node's identity |
-| `Authorizer` | `DenyAll` | who may call what |
+| `Authorizer` | `DenyAll`, or the paired set with pairing on | who may call what |
+| `Pairing` | off | let devices join by one-time ticket |
 | `Relays` | `None` | which relays may carry traffic |
 | `Waker` | none | wake a sleeping back end before one retry |
 

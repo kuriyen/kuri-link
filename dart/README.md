@@ -13,7 +13,11 @@ The package is `kuri_link` (pub package names use underscores). Surface it
 exposes (from `kuri-link-ffi`):
 
 - `LinkNode.start(keyPath, relays)` — this device's identity and endpoint.
-- `node.id()` — the public key to put in a pairing QR code.
+- `node.id()` — this device's public key, by which a back end knows it once
+  paired.
+- `node.pair(ticket)` — redeems the text of a back end's pairing QR code and
+  returns the back end's `PeerAddr`. Keep it and use
+  `Backend.remote(peer: ...)` from then on. A ticket admits one device.
 - `node.openApp(app, backend, credential)` — `Backend.local()` or
   `Backend.remote(peer: PeerAddr(...))`. The choice is configuration; the
   front-end code after this line is identical.

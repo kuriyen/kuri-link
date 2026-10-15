@@ -13,7 +13,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use kuri_link::{EndpointAddr, EndpointId, Node, RelayUrl, Relays, Value};
+use kuri_link::{EndpointAddr, EndpointId, Node, RelayUrl, Relays, Ticket, Value};
 
 /// How to reach a peer: its key, plus any addresses known out of band.
 #[derive(Debug, Clone)]
@@ -39,6 +39,14 @@ impl PeerAddr {
             addr = addr.with_relay_url(url);
         }
         Ok(addr)
+    }
+
+    fn from_endpoint_addr(addr: &EndpointAddr) -> PeerAddr {
+        PeerAddr {
+            id: addr.id.to_string(),
+            addrs: addr.ip_addrs().map(|a| a.to_string()).collect(),
+            relay: addr.relay_urls().next().map(|u| u.to_string()),
+        }
     }
 }
 
@@ -83,9 +91,18 @@ impl LinkNode {
         Ok(LinkNode { inner })
     }
 
-    /// This device's public key — what a pairing QR code would carry.
+    /// This device's public key: how a back end knows it once paired.
     pub fn id(&self) -> String {
         self.inner.id().to_string()
+    }
+
+    /// Pairs this device with the back end whose QR code read `ticket`.
+    /// Returns the back end's address: keep it, and use it with
+    /// `Backend::Remote` from then on. A ticket admits one device.
+    pub async fn pair(&self, ticket: String) -> Result<PeerAddr, String> {
+        let ticket = Ticket::from_str(&ticket).map_err(|e| e.to_string())?;
+        let addr = self.inner.pair(&ticket).await.map_err(|e| e.to_string())?;
+        Ok(PeerAddr::from_endpoint_addr(&addr))
     }
 
     /// Opens `app` on whichever back end the configuration names.
