@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: rust
+    runs-on: linux-docker
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Rust toolchain from rust-toolchain.toml
+        run: |
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs \
+              | sh -s -- -y --profile minimal --default-toolchain none --no-modify-path
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+            export PATH="$HOME/.cargo/bin:$PATH"
+          fi
+          # rust-toolchain.toml is the only pin; this is a no-op when the
+          # toolchain it names is already installed.
+          rustup toolchain install
+          rustup show active-toolchain
+          rustc --version
+          rustfmt --version
+          cargo clippy --version
+
+      - name: Fetch dependencies
+        run: cargo fetch --locked
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --offline --locked -- -D warnings
+
+      # End to end over loopback with relays off: no network beyond the fetch.
+      - name: Tests
+        run: cargo test --workspace --offline --locked

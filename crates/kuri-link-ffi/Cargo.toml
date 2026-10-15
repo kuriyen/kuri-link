@@ -1,0 +1,18 @@
+[package]
+name = "kuri-link-ffi"
+description = "The Kuri Link surface a Dart front end binds to (via flutter_rust_bridge)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[dependencies]
+kuri-link = { path = "../kuri-link" }
+ciborium.workspace = true
+tokio.workspace = true
