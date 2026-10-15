@@ -11,6 +11,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::hooks::{AuthRequest, Authorizer, Caller, DenyAll, Origin, Waker};
+use crate::pairing::{Pairing, PAIR_APP};
 use crate::service::{from_value, to_value, AppError, Duplex, Service};
 use crate::wire::{
     read_frame, write_frame, Fault, FaultCode, Header, Op, Reply, WireError, DEFAULT_MAX_FRAME,
@@ -64,7 +65,8 @@ pub struct NodeBuilder {
     key: Option<SecretKey>,
     relays: Relays,
     bind: Option<SocketAddr>,
-    authorizer: Arc<dyn Authorizer>,
+    authorizer: Option<Arc<dyn Authorizer>>,
+    pairing: Option<Pairing>,
     waker: Option<Arc<dyn Waker>>,
     apps: Vec<(String, Arc<dyn Service>)>,
     max_frame: usize,
@@ -76,7 +78,8 @@ impl Default for NodeBuilder {
             key: None,
             relays: Relays::None,
             bind: None,
-            authorizer: Arc::new(DenyAll),
+            authorizer: None,
+            pairing: None,
             waker: None,
             apps: Vec::new(),
             max_frame: DEFAULT_MAX_FRAME,
@@ -103,9 +106,23 @@ impl NodeBuilder {
         self
     }
 
-    /// Who may call this node's applications. Defaults to [`DenyAll`].
+    /// Who may call this node's applications. Defaults to [`DenyAll`], or,
+    /// with [`NodeBuilder::pairing`], to the peers paired so far.
     pub fn authorizer(mut self, authorizer: impl Authorizer) -> Self {
-        self.authorizer = Arc::new(authorizer);
+        self.authorizer = Some(Arc::new(authorizer));
+        self
+    }
+
+    /// Lets devices pair with this node by redeeming tickets that `pairing`
+    /// issues.
+    ///
+    /// The node also serves [`PAIR_APP`], where a live ticket admits its
+    /// holder to one call that adds the holder's key to the pairing's
+    /// [`PeerSet`](crate::PeerSet). That door is guarded by the pairing alone.
+    /// The node's other applications admit that same set, unless
+    /// [`NodeBuilder::authorizer`] names an authorizer of its own.
+    pub fn pairing(mut self, pairing: Pairing) -> Self {
+        self.pairing = Some(pairing);
         self
     }
 
@@ -126,6 +143,36 @@ impl NodeBuilder {
     }
 
     pub async fn bind(self) -> Result<Node, Error> {
+        let authorizer: Arc<dyn Authorizer> = match (self.authorizer, &self.pairing) {
+            (Some(authorizer), _) => authorizer,
+            (None, Some(pairing)) => Arc::new(pairing.peers().clone()),
+            (None, None) => Arc::new(DenyAll),
+        };
+        let max_frame = self.max_frame;
+        let mut handlers: Vec<AppHandler> = self
+            .apps
+            .into_iter()
+            .map(|(app, service)| AppHandler {
+                app: app.into(),
+                service,
+                authorizer: authorizer.clone(),
+                max_frame,
+            })
+            .collect();
+        if let Some(pairing) = self.pairing {
+            if handlers.iter().any(|h| &*h.app == PAIR_APP) {
+                return Err(Error::Bind(format!(
+                    "the application name {PAIR_APP:?} is reserved for pairing"
+                )));
+            }
+            handlers.push(AppHandler {
+                app: PAIR_APP.into(),
+                service: Arc::new(pairing.service()),
+                authorizer: Arc::new(pairing),
+                max_frame,
+            });
+        }
+
         let mut builder = Endpoint::builder(presets::Minimal);
         if let Some(key) = self.key {
             builder = builder.secret_key(key);
@@ -145,18 +192,13 @@ impl NodeBuilder {
             .await
             .map_err(|e| Error::Bind(e.to_string()))?;
 
-        let router = if self.apps.is_empty() {
+        let router = if handlers.is_empty() {
             None
         } else {
             let mut router = Router::builder(endpoint.clone());
-            for (app, service) in self.apps {
-                let handler = AppHandler {
-                    app: app.clone().into(),
-                    service,
-                    authorizer: self.authorizer.clone(),
-                    max_frame: self.max_frame,
-                };
-                router = router.accept(crate::alpn(&app), handler);
+            for handler in handlers {
+                let alpn = crate::alpn(&handler.app);
+                router = router.accept(alpn, handler);
             }
             Some(router.spawn())
         };
@@ -165,7 +207,7 @@ impl NodeBuilder {
             endpoint,
             router,
             waker: self.waker,
-            max_frame: self.max_frame,
+            max_frame,
         })
     }
 }

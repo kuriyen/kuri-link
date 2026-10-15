@@ -106,8 +106,9 @@ impl Authorizer for DenyAll {
     }
 }
 
-/// Admits a fixed set of peer keys — the shape of a pairing flow, where two
-/// devices exchange public keys (say, by QR code) once.
+/// Admits a fixed set of peer keys, given when the node is built. For a set
+/// that grows as devices pair and survives restarts, use
+/// [`PeerSet`](crate::PeerSet) with [`Pairing`](crate::Pairing).
 #[derive(Debug, Default, Clone)]
 pub struct Allowlist {
     peers: HashSet<EndpointId>,

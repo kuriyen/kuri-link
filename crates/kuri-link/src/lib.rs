@@ -22,12 +22,17 @@
 //!   ([`Waker`]) are supplied by the application. Nothing defaults to a third
 //!   party: relays are off unless chosen, and the default authorizer refuses
 //!   everyone.
+//! - **Pairing by QR code.** [`Pairing`] issues one-time [`Ticket`]s: the back
+//!   end's address and a short-lived token, as text a QR code carries. A front
+//!   end redeems one with [`Node::pair`], and the back end adds the key the
+//!   handshake proved to a [`PeerSet`], which can be kept in a file.
 //!
 //! See `docs/design.md` for the wire format and the reasoning.
 
 mod hooks;
 mod local;
 mod node;
+mod pairing;
 mod peers;
 mod service;
 mod wire;
@@ -43,6 +48,7 @@ pub use hooks::{
 };
 pub use local::register_local;
 pub use node::{CallError, Client, Error, Node, NodeBuilder, Relays};
+pub use pairing::{PairError, PairToken, Pairing, Ticket, TicketError, PAIR_APP, PAIR_METHOD};
 pub use peers::PeerSet;
 pub use service::{from_value, to_value, AppError, Duplex, Methods, OpenHandler, Service};
 pub use wire::{Fault, FaultCode, WireError, DEFAULT_MAX_FRAME, WIRE_VERSION};

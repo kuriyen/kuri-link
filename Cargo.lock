@@ -1460,6 +1460,8 @@ name = "kuri-link"
 version = "0.0.1"
 dependencies = [
  "ciborium",
+ "data-encoding",
+ "getrandom 0.4.3",
  "iroh",
  "serde",
  "serde_bytes",
