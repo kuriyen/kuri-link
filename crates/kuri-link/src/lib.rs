@@ -28,6 +28,7 @@
 mod hooks;
 mod local;
 mod node;
+mod peers;
 mod service;
 mod wire;
 
@@ -42,6 +43,7 @@ pub use hooks::{
 };
 pub use local::register_local;
 pub use node::{CallError, Client, Error, Node, NodeBuilder, Relays};
+pub use peers::PeerSet;
 pub use service::{from_value, to_value, AppError, Duplex, Methods, OpenHandler, Service};
 pub use wire::{Fault, FaultCode, WireError, DEFAULT_MAX_FRAME, WIRE_VERSION};
 
