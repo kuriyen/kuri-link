@@ -66,7 +66,7 @@ class PeerStore {
     return PeerAddr(
       id: json['id'] as String,
       addrs: (json['addrs'] as List).cast<String>(),
-      relay: json['relay'] as String?,
+      relays: (json['relays'] as List).cast<String>(),
     );
   }
 
@@ -77,7 +77,7 @@ class PeerStore {
       return;
     }
     file.writeAsStringSync(
-      jsonEncode({'id': peer.id, 'addrs': peer.addrs, 'relay': peer.relay}),
+      jsonEncode({'id': peer.id, 'addrs': peer.addrs, 'relays': peer.relays}),
     );
   }
 }

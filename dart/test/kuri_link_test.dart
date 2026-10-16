@@ -184,7 +184,7 @@ void main() {
       node.openApp(
         app: app,
         backend: Backend.remote(
-          peer: PeerAddr(id: 'not a key', addrs: const []),
+          peer: PeerAddr(id: 'not a key', addrs: const [], relays: const []),
         ),
         credential: null,
       ),

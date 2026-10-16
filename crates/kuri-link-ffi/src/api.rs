@@ -18,8 +18,8 @@ pub struct PeerAddr {
     pub id: String,
     /// Direct socket addresses, e.g. `"192.0.2.40:41234"`.
     pub addrs: Vec<String>,
-    /// A relay the peer is reachable through, if any.
-    pub relay: Option<String>,
+    /// Relays the peer is reachable through, e.g. `"https://relay.example.org"`.
+    pub relays: Vec<String>,
 }
 
 impl PeerAddr {
@@ -31,8 +31,8 @@ impl PeerAddr {
                 SocketAddr::from_str(a).map_err(|e| LinkError::new(format!("address {a}: {e}")))?;
             addr = addr.with_addr(socket);
         }
-        if let Some(relay) = &self.relay {
-            let relay = RelayUrl::from_str(relay).map_err(|e| LinkError::new(e.to_string()))?;
+        for r in &self.relays {
+            let relay = RelayUrl::from_str(r).map_err(|e| LinkError::new(e.to_string()))?;
             addr = addr.with_relay(relay);
         }
         Ok(addr)
@@ -42,7 +42,7 @@ impl PeerAddr {
         PeerAddr {
             id: addr.id.to_string(),
             addrs: addr.addrs.iter().map(|a| a.to_string()).collect(),
-            relay: addr.relays.iter().next().map(|u| u.to_string()),
+            relays: addr.relays.iter().map(|u| u.to_string()).collect(),
         }
     }
 }
@@ -259,6 +259,9 @@ impl LinkClient {
     }
 }
 
+/// The most one [`LinkStream::read`] returns.
+const MAX_READ: u32 = 1 << 20;
+
 fn decode_args(args_cbor: &[u8]) -> Result<Value, LinkError> {
     if args_cbor.is_empty() {
         return Ok(Value::Null);
@@ -286,10 +289,12 @@ impl LinkStream {
         send.shutdown().await.map_err(LinkError::other)
     }
 
-    /// Up to `max` bytes, as soon as any arrive. Empty means the back end
-    /// finished its side.
+    /// Up to `max` bytes, and never more than 1 MiB, as soon as any arrive.
+    /// Empty means the back end finished its side.
     pub async fn read(&self, max: u32) -> Result<Vec<u8>, LinkError> {
-        let mut buf = vec![0; max as usize];
+        // The buffer is allocated before anything arrives, so a large `max`
+        // must not become a large allocation.
+        let mut buf = vec![0; max.min(MAX_READ) as usize];
         let n = self
             .recv
             .lock()

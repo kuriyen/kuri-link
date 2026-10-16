@@ -121,9 +121,6 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
 
   @protected
-  String? dco_decode_opt_String(dynamic raw);
-
-  @protected
   FaultCode? dco_decode_opt_box_autoadd_fault_code(dynamic raw);
 
   @protected
@@ -233,9 +230,6 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
 
   @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
-
-  @protected
-  String? sse_decode_opt_String(SseDeserializer deserializer);
 
   @protected
   FaultCode? sse_decode_opt_box_autoadd_fault_code(
@@ -367,9 +361,6 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
     Uint8List self,
     SseSerializer serializer,
   );
-
-  @protected
-  void sse_encode_opt_String(String? self, SseSerializer serializer);
 
   @protected
   void sse_encode_opt_box_autoadd_fault_code(

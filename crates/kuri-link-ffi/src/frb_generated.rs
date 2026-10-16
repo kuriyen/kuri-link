@@ -913,17 +913,6 @@ impl SseDecode for Vec<u8> {
     }
 }
 
-impl SseDecode for Option<String> {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        if (<bool>::sse_decode(deserializer)) {
-            return Some(<String>::sse_decode(deserializer));
-        } else {
-            return None;
-        }
-    }
-}
-
 impl SseDecode for Option<crate::api::FaultCode> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -951,11 +940,11 @@ impl SseDecode for crate::api::PeerAddr {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_id = <String>::sse_decode(deserializer);
         let mut var_addrs = <Vec<String>>::sse_decode(deserializer);
-        let mut var_relay = <Option<String>>::sse_decode(deserializer);
+        let mut var_relays = <Vec<String>>::sse_decode(deserializer);
         return crate::api::PeerAddr {
             id: var_id,
             addrs: var_addrs,
-            relay: var_relay,
+            relays: var_relays,
         };
     }
 }
@@ -1133,7 +1122,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::PeerAddr {
         [
             self.id.into_into_dart().into_dart(),
             self.addrs.into_into_dart().into_dart(),
-            self.relay.into_into_dart().into_dart(),
+            self.relays.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -1286,16 +1275,6 @@ impl SseEncode for Vec<u8> {
     }
 }
 
-impl SseEncode for Option<String> {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        <bool>::sse_encode(self.is_some(), serializer);
-        if let Some(value) = self {
-            <String>::sse_encode(value, serializer);
-        }
-    }
-}
-
 impl SseEncode for Option<crate::api::FaultCode> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1321,7 +1300,7 @@ impl SseEncode for crate::api::PeerAddr {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <String>::sse_encode(self.id, serializer);
         <Vec<String>>::sse_encode(self.addrs, serializer);
-        <Option<String>>::sse_encode(self.relay, serializer);
+        <Vec<String>>::sse_encode(self.relays, serializer);
     }
 }
 

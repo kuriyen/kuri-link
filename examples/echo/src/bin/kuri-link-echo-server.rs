@@ -5,9 +5,10 @@
 //! kuri-link-echo-server [--bind ADDR] [--peers FILE] [--key FILE]
 //! ```
 //!
-//! `--bind` defaults to every interface on a random port; `--peers` keeps the
-//! paired devices across restarts, and `--key` keeps the server's own key, so
-//! a front end paired once still finds it.
+//! `--bind` defaults to every interface on a random port, and the ticket then
+//! lists the addresses of those interfaces. `--peers` keeps the paired devices
+//! across restarts, and `--key` keeps the server's own key, so a front end
+//! paired once still finds it.
 
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -56,8 +57,20 @@ async fn run() -> Result<(), String> {
     }
     let node = builder.bind().await.map_err(|e| e.to_string())?;
 
+    // A socket bound to every interface names no address a peer can dial;
+    // the addresses iroh found on those interfaces do.
+    let mut addr = node.bound_addr();
+    if addr.addrs.is_empty() {
+        addr = node.addr();
+    }
+    if addr.addrs.is_empty() {
+        return Err(format!(
+            "no address to put in the ticket for {bind}; pass --bind with this host's address"
+        ));
+    }
+
     // One line, so a script or a test can read it.
-    println!("{}", pairing.issue(node.bound_addr(), TICKET_TTL));
+    println!("{}", pairing.issue(addr, TICKET_TTL));
     eprintln!(
         "serving {} as {}; the ticket above pairs one device and expires in {} minutes",
         kuri_link_echo::APP,

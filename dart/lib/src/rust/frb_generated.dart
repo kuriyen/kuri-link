@@ -814,12 +814,6 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   }
 
   @protected
-  String? dco_decode_opt_String(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return raw == null ? null : dco_decode_String(raw);
-  }
-
-  @protected
   FaultCode? dco_decode_opt_box_autoadd_fault_code(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_fault_code(raw);
@@ -840,7 +834,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
     return PeerAddr(
       id: dco_decode_String(arr[0]),
       addrs: dco_decode_list_String(arr[1]),
-      relay: dco_decode_opt_String(arr[2]),
+      relays: dco_decode_list_String(arr[2]),
     );
   }
 
@@ -1071,17 +1065,6 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   }
 
   @protected
-  String? sse_decode_opt_String(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-
-    if (sse_decode_bool(deserializer)) {
-      return (sse_decode_String(deserializer));
-    } else {
-      return null;
-    }
-  }
-
-  @protected
   FaultCode? sse_decode_opt_box_autoadd_fault_code(
     SseDeserializer deserializer,
   ) {
@@ -1110,8 +1093,8 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_id = sse_decode_String(deserializer);
     var var_addrs = sse_decode_list_String(deserializer);
-    var var_relay = sse_decode_opt_String(deserializer);
-    return PeerAddr(id: var_id, addrs: var_addrs, relay: var_relay);
+    var var_relays = sse_decode_list_String(deserializer);
+    return PeerAddr(id: var_id, addrs: var_addrs, relays: var_relays);
   }
 
   @protected
@@ -1353,16 +1336,6 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   }
 
   @protected
-  void sse_encode_opt_String(String? self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-
-    sse_encode_bool(self != null, serializer);
-    if (self != null) {
-      sse_encode_String(self, serializer);
-    }
-  }
-
-  @protected
   void sse_encode_opt_box_autoadd_fault_code(
     FaultCode? self,
     SseSerializer serializer,
@@ -1393,7 +1366,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.id, serializer);
     sse_encode_list_String(self.addrs, serializer);
-    sse_encode_opt_String(self.relay, serializer);
+    sse_encode_list_String(self.relays, serializer);
   }
 
   @protected
@@ -1541,8 +1514,8 @@ class LinkStreamImpl extends RustOpaque implements LinkStream {
   Future<void> finish() =>
       KuriLinkLib.instance.api.crateApiLinkStreamFinish(that: this);
 
-  /// Up to `max` bytes, as soon as any arrive. Empty means the back end
-  /// finished its side.
+  /// Up to `max` bytes, and never more than 1 MiB, as soon as any arrive.
+  /// Empty means the back end finished its side.
   Future<Uint8List> read({required int max}) =>
       KuriLinkLib.instance.api.crateApiLinkStreamRead(that: this, max: max);
 

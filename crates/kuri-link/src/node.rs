@@ -245,8 +245,11 @@ impl Node {
         PeerAddr::from_iroh(&self.endpoint.addr())
     }
 
-    /// This node's key plus the sockets it is bound to — enough for a peer on
+    /// This node's key plus the sockets it is bound to: enough for a peer on
     /// the same host or LAN to dial it with no relay and no lookup service.
+    /// A socket bound to every interface (`0.0.0.0` or `[::]`) names no
+    /// address a peer can dial and is left out; for such a node use
+    /// [`Node::addr`], which lists the interfaces' addresses.
     pub fn bound_addr(&self) -> PeerAddr {
         let sockets = self.endpoint.bound_sockets();
         let mut addr = PeerAddr::new(self.id());

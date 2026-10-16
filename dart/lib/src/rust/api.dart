@@ -71,8 +71,8 @@ abstract class LinkStream implements RustOpaqueInterface {
   /// Ends this side of the stream: the back end reads end-of-stream.
   Future<void> finish();
 
-  /// Up to `max` bytes, as soon as any arrive. Empty means the back end
-  /// finished its side.
+  /// Up to `max` bytes, and never more than 1 MiB, as soon as any arrive.
+  /// Empty means the back end finished its side.
   Future<Uint8List> read({required int max});
 
   /// Everything until the back end finishes its side.
@@ -151,13 +151,13 @@ class PeerAddr {
   /// Direct socket addresses, e.g. `"192.0.2.40:41234"`.
   final List<String> addrs;
 
-  /// A relay the peer is reachable through, if any.
-  final String? relay;
+  /// Relays the peer is reachable through, e.g. `"https://relay.example.org"`.
+  final List<String> relays;
 
-  const PeerAddr({required this.id, required this.addrs, this.relay});
+  const PeerAddr({required this.id, required this.addrs, required this.relays});
 
   @override
-  int get hashCode => id.hashCode ^ addrs.hashCode ^ relay.hashCode;
+  int get hashCode => id.hashCode ^ addrs.hashCode ^ relays.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -166,5 +166,5 @@ class PeerAddr {
           runtimeType == other.runtimeType &&
           id == other.id &&
           addrs == other.addrs &&
-          relay == other.relay;
+          relays == other.relays;
 }
