@@ -50,3 +50,56 @@ jobs:
       # End to end over loopback with relays off: no network beyond the fetch.
       - name: Tests
         run: cargo test --workspace --offline --locked
+
+  # The Dart package against the example back end, linked in and over
+  # loopback. The Flutter example needs a display and stays a local check.
+  dart:
+    name: dart
+    runs-on: linux-docker
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      DART_VERSION: 3.13.2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Rust toolchain from rust-toolchain.toml
+        run: |
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs \
+              | sh -s -- -y --profile minimal --default-toolchain none --no-modify-path
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+            export PATH="$HOME/.cargo/bin:$PATH"
+          fi
+          rustup toolchain install
+          rustc --version
+
+      - name: Dart SDK
+        run: |
+          curl --proto '=https' --tlsv1.2 -fsSL -o "$RUNNER_TEMP/dart.zip" \
+            "https://storage.googleapis.com/dart-archive/channels/stable/release/$DART_VERSION/sdk/dartsdk-linux-x64-release.zip"
+          if command -v unzip >/dev/null 2>&1; then
+            unzip -q "$RUNNER_TEMP/dart.zip" -d "$HOME"
+          else
+            python3 -m zipfile -e "$RUNNER_TEMP/dart.zip" "$HOME"
+            chmod -R +x "$HOME/dart-sdk/bin"
+          fi
+          echo "$HOME/dart-sdk/bin" >> "$GITHUB_PATH"
+          "$HOME/dart-sdk/bin/dart" --version
+
+      - name: Build the example back end
+        run: cargo build --locked -p kuri-link-echo
+
+      - name: Format and analyze
+        working-directory: dart
+        run: |
+          dart pub get
+          dart format --output=none --set-exit-if-changed lib/kuri_link.dart test
+          dart analyze --fatal-infos
+
+      - name: Tests
+        working-directory: dart
+        run: dart test

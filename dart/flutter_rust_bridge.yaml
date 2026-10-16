@@ -1,0 +1,5 @@
+rust_input: crate::api
+rust_root: ../crates/kuri-link-ffi/
+dart_output: lib/src/rust
+dart_entrypoint_class_name: KuriLinkLib
+web: false

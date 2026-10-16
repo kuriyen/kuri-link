@@ -1,0 +1,20 @@
+[package]
+name = "kuri-link-echo"
+description = "An example back end: one service, linked into an app or run on its own."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+# The cdylib is the app's one native library: this back end plus the Dart
+# bindings it re-exports.
+crate-type = ["lib", "cdylib"]
+
+[dependencies]
+kuri-link = { path = "../../crates/kuri-link" }
+kuri-link-ffi = { path = "../../crates/kuri-link-ffi" }
+tokio.workspace = true

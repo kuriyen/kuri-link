@@ -1,0 +1,24 @@
+name: kuri_link_desktop
+description: "Kuri Link example: one app, its back end in-process or on another device."
+publish_to: 'none'
+version: 0.0.1
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  cbor: ^6.5.0
+  flutter:
+    sdk: flutter
+  kuri_link:
+    path: ../../dart
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

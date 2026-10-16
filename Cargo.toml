@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/kuri-link", "crates/kuri-link-ffi"]
+members = ["crates/kuri-link", "crates/kuri-link-ffi", "examples/echo"]
 
 [workspace.package]
 version = "0.0.1"
@@ -17,6 +17,8 @@ iroh = "1.3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util"] }
 ciborium = "0.2"
 data-encoding = "2"
+# The Dart package pins the same version; the two must match exactly.
+flutter_rust_bridge = "=2.13.0"
 getrandom = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_bytes = "0.11"

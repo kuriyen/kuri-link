@@ -60,23 +60,28 @@ let local = Client::in_process(methods);
 let sum: i64 = remote.call_typed("add", &(2, 3)).await?;
 ```
 
-A Dart/Flutter front end binds to `crates/kuri-link-ffi` through
-[flutter_rust_bridge](https://github.com/fzyzcjy/flutter_rust_bridge); see
-`dart/README.md`.
+A Dart/Flutter front end uses the `kuri_link` package in `dart/`, generated
+from `crates/kuri-link-ffi` by
+[flutter_rust_bridge](https://github.com/fzyzcjy/flutter_rust_bridge). An app
+ships one native library holding both the bindings and its local back ends;
+`dart/README.md` explains why and how.
 
 ## Layout
 
 ```
 crates/kuri-link      the library: node, client, wire format, hooks, pairing
 crates/kuri-link-ffi  the plain-typed surface a Dart front end binds to
+dart/                 the Dart package, kuri_link (bindings generated; see its README)
+examples/echo         an example back end: linked into an app, or run as a server
+examples/desktop      a Flutter app for Linux on that back end, in-process or remote
 docs/design.md        wire format and design decisions
-dart/                 the Dart package (generated; see its README)
 ```
 
 ## Build and test
 
 ```sh
 cargo test --workspace     # end-to-end over loopback; no network, no relays
+cargo build -p kuri-link-echo && (cd dart && dart test)   # the same from Dart
 ```
 
 ## License
