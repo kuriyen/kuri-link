@@ -4,8 +4,8 @@ use std::collections::HashSet;
 use std::io;
 use std::path::Path;
 
+use crate::addr::{NodeKey, PeerAddr, PeerId};
 use ciborium::Value;
-use iroh::{EndpointAddr, EndpointId, SecretKey};
 
 use crate::BoxFuture;
 
@@ -14,16 +14,16 @@ use crate::BoxFuture;
 ///
 /// A node's key *is* its address: peers dial the public half. Keep the file
 /// for as long as the node should stay reachable at the same identity.
-pub fn load_or_create_key(path: &Path) -> io::Result<SecretKey> {
+pub fn load_or_create_key(path: &Path) -> io::Result<NodeKey> {
     match std::fs::read(path) {
         Ok(bytes) => {
             let bytes: [u8; 32] = bytes.as_slice().try_into().map_err(|_| {
                 io::Error::new(io::ErrorKind::InvalidData, "key file is not 32 bytes")
             })?;
-            Ok(SecretKey::from_bytes(&bytes))
+            Ok(NodeKey::from_bytes(&bytes))
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            let key = SecretKey::generate();
+            let key = NodeKey::generate();
             let mut opts = std::fs::OpenOptions::new();
             opts.write(true).create_new(true);
             #[cfg(unix)]
@@ -44,7 +44,7 @@ pub fn load_or_create_key(path: &Path) -> io::Result<SecretKey> {
 pub struct AuthRequest<'a> {
     /// The caller's key, proven during the QUIC/TLS handshake. Not a claim:
     /// the connection could not exist unless the peer holds the private half.
-    pub peer: EndpointId,
+    pub peer: PeerId,
     /// The application the connection was opened for.
     pub app: &'a str,
     /// The method being called or opened.
@@ -60,7 +60,7 @@ pub enum Origin {
     /// no key: the trust boundary is the process itself, so no authorizer runs.
     InProcess,
     /// A peer, identified by the key it proved during the handshake.
-    Peer(EndpointId),
+    Peer(PeerId),
 }
 
 /// Who is calling, as the authorizer vouches for them. Handed to the method.
@@ -73,7 +73,7 @@ pub struct Caller {
 
 impl Caller {
     /// The peer's key, or `None` for an in-process call.
-    pub fn peer(&self) -> Option<EndpointId> {
+    pub fn peer(&self) -> Option<PeerId> {
         match self.origin {
             Origin::Peer(id) => Some(id),
             Origin::InProcess => None,
@@ -111,17 +111,17 @@ impl Authorizer for DenyAll {
 /// [`PeerSet`](crate::PeerSet) with [`Pairing`](crate::Pairing).
 #[derive(Debug, Default, Clone)]
 pub struct Allowlist {
-    peers: HashSet<EndpointId>,
+    peers: HashSet<PeerId>,
 }
 
 impl Allowlist {
-    pub fn new(peers: impl IntoIterator<Item = EndpointId>) -> Self {
+    pub fn new(peers: impl IntoIterator<Item = PeerId>) -> Self {
         Allowlist {
             peers: peers.into_iter().collect(),
         }
     }
 
-    pub fn contains(&self, peer: &EndpointId) -> bool {
+    pub fn contains(&self, peer: &PeerId) -> bool {
         self.peers.contains(peer)
     }
 }
@@ -148,5 +148,5 @@ impl Authorizer for Allowlist {
 /// Called when connecting fails, before one retry: the place to wake a back
 /// end that sleeps to save power. Return `true` to retry.
 pub trait Waker: Send + Sync + 'static {
-    fn wake<'a>(&'a self, peer: &'a EndpointAddr, app: &'a str) -> BoxFuture<'a, bool>;
+    fn wake<'a>(&'a self, peer: &'a PeerAddr, app: &'a str) -> BoxFuture<'a, bool>;
 }

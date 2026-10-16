@@ -13,39 +13,38 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use kuri_link::{EndpointAddr, EndpointId, Node, RelayUrl, Relays, Ticket, Value};
+use kuri_link::{Node, PeerId, RelayUrl, Relays, Ticket, Value};
 
 /// How to reach a peer: its key, plus any addresses known out of band.
 #[derive(Debug, Clone)]
 pub struct PeerAddr {
-    /// The peer's public key, as `EndpointId`'s string form.
+    /// The peer's public key: 64 hex digits, `PeerId`'s text form.
     pub id: String,
-    /// Direct socket addresses, e.g. `"192.168.86.40:41234"`.
+    /// Direct socket addresses, e.g. `"192.0.2.40:41234"`.
     pub addrs: Vec<String>,
     /// A relay the peer is reachable through, if any.
     pub relay: Option<String>,
 }
 
 impl PeerAddr {
-    fn parse(&self) -> Result<EndpointAddr, String> {
-        let id = EndpointId::from_str(&self.id).map_err(|e| format!("peer id: {e}"))?;
-        let mut addr = EndpointAddr::new(id);
+    fn parse(&self) -> Result<kuri_link::PeerAddr, String> {
+        let id = PeerId::from_str(&self.id).map_err(|e| format!("peer id: {e}"))?;
+        let mut addr = kuri_link::PeerAddr::new(id);
         for a in &self.addrs {
             let socket = SocketAddr::from_str(a).map_err(|e| format!("address {a}: {e}"))?;
-            addr = addr.with_ip_addr(socket);
+            addr = addr.with_addr(socket);
         }
         if let Some(relay) = &self.relay {
-            let url = RelayUrl::from_str(relay).map_err(|e| format!("relay {relay}: {e}"))?;
-            addr = addr.with_relay_url(url);
+            addr = addr.with_relay(RelayUrl::from_str(relay).map_err(|e| e.to_string())?);
         }
         Ok(addr)
     }
 
-    fn from_endpoint_addr(addr: &EndpointAddr) -> PeerAddr {
+    fn from_core(addr: &kuri_link::PeerAddr) -> PeerAddr {
         PeerAddr {
             id: addr.id.to_string(),
-            addrs: addr.ip_addrs().map(|a| a.to_string()).collect(),
-            relay: addr.relay_urls().next().map(|u| u.to_string()),
+            addrs: addr.addrs.iter().map(|a| a.to_string()).collect(),
+            relay: addr.relays.iter().next().map(|u| u.to_string()),
         }
     }
 }
@@ -78,7 +77,7 @@ impl LinkNode {
             Relays::Custom(
                 relays
                     .iter()
-                    .map(|r| RelayUrl::from_str(r).map_err(|e| format!("relay {r}: {e}")))
+                    .map(|r| RelayUrl::from_str(r).map_err(|e| e.to_string()))
                     .collect::<Result<_, _>>()?,
             )
         };
@@ -102,7 +101,7 @@ impl LinkNode {
     pub async fn pair(&self, ticket: String) -> Result<PeerAddr, String> {
         let ticket = Ticket::from_str(&ticket).map_err(|e| e.to_string())?;
         let addr = self.inner.pair(&ticket).await.map_err(|e| e.to_string())?;
-        Ok(PeerAddr::from_endpoint_addr(&addr))
+        Ok(PeerAddr::from_core(&addr))
     }
 
     /// Opens `app` on whichever back end the configuration names.

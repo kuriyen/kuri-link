@@ -2,14 +2,14 @@
 
 use std::path::PathBuf;
 
-use kuri_link::{PeerSet, SecretKey};
+use kuri_link::{NodeKey, PeerSet};
 
 /// A fresh directory under the system's temporary one, removed on drop.
 struct Scratch(PathBuf);
 
 impl Scratch {
     fn new() -> Scratch {
-        let name = format!("kuri-link-{}", SecretKey::generate().public().fmt_short());
+        let name = format!("kuri-link-{}", NodeKey::generate().public().fmt_short());
         let dir = std::env::temp_dir().join(name);
         std::fs::create_dir_all(&dir).expect("scratch directory");
         Scratch(dir)
@@ -30,8 +30,8 @@ fn a_peer_set_on_a_file_writes_every_change_through() {
     assert!(set.is_empty());
     assert!(!file.exists(), "nothing is written until something changes");
 
-    let a = SecretKey::generate().public();
-    let b = SecretKey::generate().public();
+    let a = NodeKey::generate().public();
+    let b = NodeKey::generate().public();
     let shared = set.clone();
     assert!(set.insert(a).unwrap());
     assert!(!set.insert(a).unwrap(), "already there");
@@ -67,8 +67,8 @@ fn when_the_file_cannot_be_written_the_set_admits_less() {
     let dir = Scratch::new();
     let file = dir.0.join("peers");
     let set = PeerSet::open(&file).unwrap();
-    let a = SecretKey::generate().public();
-    let b = SecretKey::generate().public();
+    let a = NodeKey::generate().public();
+    let b = NodeKey::generate().public();
     set.insert(a).unwrap();
 
     // A directory where the file should be: the replacing rename fails, as

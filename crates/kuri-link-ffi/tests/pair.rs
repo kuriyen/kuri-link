@@ -4,7 +4,7 @@
 use std::net::{Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
-use kuri_link::{Methods, Node, Pairing, PeerSet, Relays, SecretKey};
+use kuri_link::{Methods, Node, NodeKey, Pairing, PeerSet, Relays};
 use kuri_link_ffi::{Backend, LinkNode};
 
 #[tokio::test(flavor = "multi_thread")]
@@ -21,10 +21,7 @@ async fn a_front_end_pairs_by_ticket_text_then_calls() {
         .unwrap();
     let ticket = pairing.issue(server.bound_addr(), Duration::from_secs(60));
 
-    let name = format!(
-        "kuri-link-{}.key",
-        SecretKey::generate().public().fmt_short()
-    );
+    let name = format!("kuri-link-{}.key", NodeKey::generate().public().fmt_short());
     let key = std::env::temp_dir().join(name);
     let node = LinkNode::start(key.display().to_string(), Vec::new())
         .await

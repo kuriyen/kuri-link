@@ -22,6 +22,9 @@
 //!   ([`Waker`]) are supplied by the application. Nothing defaults to a third
 //!   party: relays are off unless chosen, and the default authorizer refuses
 //!   everyone.
+//! - **Its own names for keys and addresses.** [`PeerId`], [`PeerAddr`] and
+//!   [`NodeKey`] are Kuri Link's types; iroh stays underneath, so a change of
+//!   transport is not a change of API.
 //! - **Pairing by QR code.** [`Pairing`] issues one-time [`Ticket`]s: the back
 //!   end's address and a short-lived token, as text a QR code carries. A front
 //!   end redeems one with [`Node::pair`], and the back end adds the key the
@@ -29,6 +32,7 @@
 //!
 //! See `docs/design.md` for the wire format and the reasoning.
 
+mod addr;
 mod hooks;
 mod local;
 mod node;
@@ -40,8 +44,8 @@ mod wire;
 use std::future::Future;
 use std::pin::Pin;
 
+pub use addr::{NodeKey, ParseError, PeerAddr, PeerId, RelayUrl};
 pub use ciborium::Value;
-pub use iroh::{EndpointAddr, EndpointId, PublicKey, RelayUrl, SecretKey};
 
 pub use hooks::{
     load_or_create_key, Allowlist, AuthRequest, Authorizer, Caller, Denied, DenyAll, Origin, Waker,

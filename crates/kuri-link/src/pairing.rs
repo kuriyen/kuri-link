@@ -14,9 +14,9 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use ciborium::Value;
-use iroh::{EndpointAddr, EndpointId, RelayUrl};
 use serde::{Deserialize, Serialize};
 
+use crate::addr::{PeerAddr, PeerId, RelayUrl};
 use crate::hooks::{AuthRequest, Authorizer, Caller, Denied, Origin};
 use crate::node::{CallError, Error, Node};
 use crate::peers::PeerSet;
@@ -69,7 +69,7 @@ impl fmt::Debug for PairToken {
 /// whoever presents it first can pair.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ticket {
-    pub addr: EndpointAddr,
+    pub addr: PeerAddr,
     pub token: PairToken,
 }
 
@@ -96,8 +96,8 @@ impl fmt::Display for Ticket {
         let wire = TicketWire {
             v: TICKET_VERSION,
             id: serde_bytes::ByteBuf::from(self.addr.id.as_bytes().to_vec()),
-            ip: self.addr.ip_addrs().map(|a| a.to_string()).collect(),
-            relay: self.addr.relay_urls().map(|u| u.to_string()).collect(),
+            ip: self.addr.addrs.iter().map(|a| a.to_string()).collect(),
+            relay: self.addr.relays.iter().map(|u| u.to_string()).collect(),
             token: serde_bytes::ByteBuf::from(self.token.0.to_vec()),
         };
         let mut cbor = Vec::new();
@@ -135,23 +135,22 @@ impl FromStr for Ticket {
             .as_slice()
             .try_into()
             .map_err(|_| TicketError("the key is not 32 bytes".into()))?;
-        let id = EndpointId::from_bytes(&id).map_err(|e| TicketError(format!("key: {e}")))?;
+        let id = PeerId::from_bytes(&id).map_err(|e| TicketError(format!("key: {e}")))?;
         let token: [u8; 16] = wire
             .token
             .as_slice()
             .try_into()
             .map_err(|_| TicketError("the token is not 16 bytes".into()))?;
-        let mut addr = EndpointAddr::new(id);
+        let mut addr = PeerAddr::new(id);
         for ip in &wire.ip {
             let socket: SocketAddr = ip
                 .parse()
                 .map_err(|e| TicketError(format!("address {ip}: {e}")))?;
-            addr = addr.with_ip_addr(socket);
+            addr = addr.with_addr(socket);
         }
         for relay in &wire.relay {
-            let url = RelayUrl::from_str(relay)
-                .map_err(|e| TicketError(format!("relay {relay}: {e}")))?;
-            addr = addr.with_relay_url(url);
+            let url = RelayUrl::from_str(relay).map_err(|e| TicketError(e.to_string()))?;
+            addr = addr.with_relay(url);
         }
         Ok(Ticket {
             addr,
@@ -193,7 +192,7 @@ impl Pairing {
 
     /// Issues a ticket for the back end at `addr`, usually [`Node::addr`],
     /// good for one device within `ttl`. `ttl` is capped at a day.
-    pub fn issue(&self, addr: EndpointAddr, ttl: Duration) -> Ticket {
+    pub fn issue(&self, addr: PeerAddr, ttl: Duration) -> Ticket {
         let token = PairToken::generate();
         let now = Instant::now();
         let mut tokens = self.tokens();
@@ -320,12 +319,51 @@ impl Node {
     /// Redeems `ticket` with the back end that issued it, which from then on
     /// admits this node's key. Returns the back end's address, to keep and
     /// pass to [`Node::connect`] later.
-    pub async fn pair(&self, ticket: &Ticket) -> Result<EndpointAddr, PairError> {
+    pub async fn pair(&self, ticket: &Ticket) -> Result<PeerAddr, PairError> {
         let client = self
             .connect(ticket.addr.clone(), PAIR_APP)
             .await?
             .with_credential(ticket.token.as_bytes().to_vec());
         client.call(PAIR_METHOD, Value::Null).await?;
         Ok(ticket.addr.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::addr::NodeKey;
+
+    // Written by the first version of pairing, which spoke iroh's types
+    // directly. Peer files and tickets already in use must keep reading the
+    // same way, whatever carries them.
+    const PEER: &str = "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c";
+    const TICKET: &str = "KURI-LINK:UVQXMALCNFSFQIHKJJWGHYU4KIFL55KQPMJS5RPZSVDXNLV6XZ5ZEQQ65JURIRWSFRRGS4ECOAYTSMROGAXDELRUGA5DIMJSGM2HIWZSGAYDCOTEMI4DUORUGBOTUNBRGIZTIZLSMVWGC6MBPANGQ5DUOBZTULZPOJSWYYLZFZSXQYLNOBWGKLTPOJTS6ZLUN5VWK3SQCEIRCEIRCEIRCEIRCEIRCEIRCE";
+    const BARE: &str = "KURI-LINK:UNQXMALCNFSFQIHKJJWGHYU4KIFL55KQPMJS5RPZSVDXNLV6XZ5ZEQQ65JURIRWSFRSXI33LMVXFAIRCEIRCEIRCEIRCEIRCEIRCEIQ";
+
+    #[test]
+    fn keys_and_tickets_read_and_write_as_they_always_have() {
+        let id = NodeKey::from_bytes(&[7; 32]).public();
+        assert_eq!(id.to_string(), PEER);
+        assert_eq!(PEER.parse::<PeerId>().unwrap(), id);
+        assert_eq!(PEER.to_uppercase().parse::<PeerId>().unwrap(), id);
+
+        let addr = PeerAddr::new(id)
+            .with_addr("192.0.2.40:41234".parse().unwrap())
+            .with_addr("[2001:db8::40]:41234".parse().unwrap())
+            .with_relay("https://relay.example.org".parse().unwrap());
+        let ticket = Ticket {
+            addr,
+            token: PairToken([0x11; 16]),
+        };
+        assert_eq!(ticket.to_string(), TICKET);
+        assert_eq!(TICKET.parse::<Ticket>().unwrap(), ticket);
+
+        let bare = Ticket {
+            addr: PeerAddr::new(id),
+            token: PairToken([0x22; 16]),
+        };
+        assert_eq!(bare.to_string(), BARE);
+        assert_eq!(BARE.parse::<Ticket>().unwrap(), bare);
     }
 }

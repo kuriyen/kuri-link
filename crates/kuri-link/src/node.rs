@@ -6,10 +6,11 @@ use std::sync::Arc;
 use ciborium::Value;
 use iroh::endpoint::{presets, Connection};
 use iroh::protocol::{AcceptError, ProtocolHandler, Router};
-use iroh::{Endpoint, EndpointAddr, EndpointId, RelayMode, RelayUrl, SecretKey};
+use iroh::{Endpoint, RelayMode};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
+use crate::addr::{NodeKey, PeerAddr, PeerId, RelayUrl};
 use crate::hooks::{AuthRequest, Authorizer, Caller, DenyAll, Origin, Waker};
 use crate::pairing::{Pairing, PAIR_APP};
 use crate::service::{from_value, to_value, AppError, Duplex, Service};
@@ -62,7 +63,7 @@ pub enum CallError {
 
 /// Configures and binds a [`Node`].
 pub struct NodeBuilder {
-    key: Option<SecretKey>,
+    key: Option<NodeKey>,
     relays: Relays,
     bind: Option<SocketAddr>,
     authorizer: Option<Arc<dyn Authorizer>>,
@@ -90,7 +91,7 @@ impl Default for NodeBuilder {
 impl NodeBuilder {
     /// The node's identity. Without one, a fresh key is generated and the
     /// node is reachable only for this process's lifetime.
-    pub fn secret_key(mut self, key: SecretKey) -> Self {
+    pub fn secret_key(mut self, key: NodeKey) -> Self {
         self.key = Some(key);
         self
     }
@@ -175,11 +176,13 @@ impl NodeBuilder {
 
         let mut builder = Endpoint::builder(presets::Minimal);
         if let Some(key) = self.key {
-            builder = builder.secret_key(key);
+            builder = builder.secret_key(key.into_iroh());
         }
         builder = match self.relays {
             Relays::None => builder.relay_mode(RelayMode::Disabled),
-            Relays::Custom(urls) => builder.relay_mode(RelayMode::custom(urls)),
+            Relays::Custom(urls) => {
+                builder.relay_mode(RelayMode::custom(urls.iter().map(RelayUrl::to_iroh)))
+            }
             Relays::PublicDefault => builder.relay_mode(RelayMode::Default),
         };
         if let Some(addr) = self.bind {
@@ -233,38 +236,39 @@ impl Node {
     }
 
     /// The public key peers dial.
-    pub fn id(&self) -> EndpointId {
-        self.endpoint.id()
+    pub fn id(&self) -> PeerId {
+        PeerId::from_iroh(self.endpoint.id())
     }
 
     /// Everything iroh currently knows about how to reach this node.
-    pub fn addr(&self) -> EndpointAddr {
-        self.endpoint.addr()
+    pub fn addr(&self) -> PeerAddr {
+        PeerAddr::from_iroh(&self.endpoint.addr())
     }
 
     /// This node's key plus the sockets it is bound to — enough for a peer on
     /// the same host or LAN to dial it with no relay and no lookup service.
-    pub fn bound_addr(&self) -> EndpointAddr {
+    pub fn bound_addr(&self) -> PeerAddr {
         let sockets = self.endpoint.bound_sockets();
-        let mut addr = EndpointAddr::new(self.id());
+        let mut addr = PeerAddr::new(self.id());
         for socket in sockets.into_iter().filter(|s| !s.ip().is_unspecified()) {
-            addr = addr.with_ip_addr(socket);
+            addr = addr.with_addr(socket);
         }
         addr
     }
 
     /// Connects to `app` on the peer at `addr`. On failure, a configured
     /// [`Waker`] gets one chance to wake the peer before a single retry.
-    pub async fn connect(&self, addr: impl Into<EndpointAddr>, app: &str) -> Result<Client, Error> {
+    pub async fn connect(&self, addr: impl Into<PeerAddr>, app: &str) -> Result<Client, Error> {
         let addr = addr.into();
+        let target = addr.to_iroh();
         let alpn = crate::alpn(app);
-        let first = self.endpoint.connect(addr.clone(), &alpn).await;
+        let first = self.endpoint.connect(target.clone(), &alpn).await;
         let conn = match (first, &self.waker) {
             (Ok(conn), _) => conn,
             (Err(first), Some(waker)) => {
                 if waker.wake(&addr, app).await {
                     self.endpoint
-                        .connect(addr.clone(), &alpn)
+                        .connect(target, &alpn)
                         .await
                         .map_err(|e| connect_error(&addr, app, e))?
                 } else {
@@ -293,9 +297,9 @@ impl Node {
     }
 }
 
-fn connect_error(addr: &EndpointAddr, app: &str, e: impl std::fmt::Display) -> Error {
+fn connect_error(addr: &PeerAddr, app: &str, e: impl std::fmt::Display) -> Error {
     Error::Connect {
-        peer: addr.id.fmt_short().to_string(),
+        peer: addr.id.fmt_short(),
         app: app.to_owned(),
         reason: e.to_string(),
     }
@@ -365,9 +369,9 @@ impl Client {
     }
 
     /// The peer's key, or `None` when the back end is in this process.
-    pub fn peer(&self) -> Option<EndpointId> {
+    pub fn peer(&self) -> Option<PeerId> {
         match &self.inner {
-            Inner::Remote { conn, .. } => Some(conn.remote_id()),
+            Inner::Remote { conn, .. } => Some(PeerId::from_iroh(conn.remote_id())),
             Inner::Local { .. } => None,
         }
     }
@@ -475,7 +479,7 @@ impl std::fmt::Debug for AppHandler {
 
 impl ProtocolHandler for AppHandler {
     async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
-        let peer = conn.remote_id();
+        let peer = PeerId::from_iroh(conn.remote_id());
         while let Ok((send, recv)) = conn.accept_bi().await {
             let this = self.clone();
             tokio::spawn(async move {
@@ -491,7 +495,7 @@ impl ProtocolHandler for AppHandler {
 impl AppHandler {
     async fn serve_stream(
         &self,
-        peer: EndpointId,
+        peer: PeerId,
         mut send: iroh::endpoint::SendStream,
         mut recv: iroh::endpoint::RecvStream,
     ) -> Result<(), WireError> {

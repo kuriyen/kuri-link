@@ -6,8 +6,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use kuri_link::{
-    Allowlist, BoxFuture, CallError, Client, EndpointAddr, FaultCode, Methods, Node, Relays,
-    SecretKey, Value, Waker,
+    Allowlist, BoxFuture, CallError, Client, FaultCode, Methods, Node, NodeKey, PeerAddr, Relays,
+    Value, Waker,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -43,7 +43,7 @@ fn methods() -> Methods {
         })
 }
 
-async fn server_for(paired: &[SecretKey]) -> Node {
+async fn server_for(paired: &[NodeKey]) -> Node {
     Node::builder()
         .relays(Relays::None)
         .bind_addr(loopback())
@@ -54,7 +54,7 @@ async fn server_for(paired: &[SecretKey]) -> Node {
         .expect("server binds")
 }
 
-async fn client_with(key: SecretKey) -> Node {
+async fn client_with(key: NodeKey) -> Node {
     Node::builder()
         .secret_key(key)
         .relays(Relays::None)
@@ -120,7 +120,7 @@ async fn exercise(client: &Client, expected_caller: &str) {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_paired_peer_and_an_in_process_back_end_behave_the_same() {
-    let key = SecretKey::generate();
+    let key = NodeKey::generate();
     let server = server_for(std::slice::from_ref(&key)).await;
     let client_node = client_with(key.clone()).await;
     let remote = client_node
@@ -148,8 +148,8 @@ async fn a_registered_local_back_end_is_found_by_name() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_unpaired_key_is_denied_on_every_request() {
-    let paired = SecretKey::generate();
-    let stranger = SecretKey::generate();
+    let paired = NodeKey::generate();
+    let stranger = NodeKey::generate();
     let server = server_for(&[paired]).await;
     let client_node = client_with(stranger).await;
     let client = client_node.connect(server.bound_addr(), APP).await.unwrap();
@@ -165,7 +165,7 @@ async fn an_unpaired_key_is_denied_on_every_request() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_node_with_no_authorizer_serves_nobody() {
-    let key = SecretKey::generate();
+    let key = NodeKey::generate();
     let server = Node::builder()
         .relays(Relays::None)
         .bind_addr(loopback())
@@ -185,7 +185,7 @@ async fn a_node_with_no_authorizer_serves_nobody() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_app_the_peer_does_not_serve_fails_at_the_handshake() {
-    let key = SecretKey::generate();
+    let key = NodeKey::generate();
     let server = server_for(std::slice::from_ref(&key)).await;
     let client_node = client_with(key).await;
 
@@ -202,7 +202,7 @@ async fn an_app_the_peer_does_not_serve_fails_at_the_handshake() {
 struct CountingWaker(Arc<AtomicUsize>);
 
 impl Waker for CountingWaker {
-    fn wake<'a>(&'a self, _peer: &'a EndpointAddr, _app: &'a str) -> BoxFuture<'a, bool> {
+    fn wake<'a>(&'a self, _peer: &'a PeerAddr, _app: &'a str) -> BoxFuture<'a, bool> {
         self.0.fetch_add(1, Ordering::SeqCst);
         Box::pin(async { false })
     }
@@ -221,8 +221,8 @@ async fn the_waker_gets_one_chance_when_connecting_fails() {
 
     // A peer that serves the app on another key: the handshake fails.
     let other = server_for(&[]).await;
-    let wrong = EndpointAddr::new(SecretKey::generate().public())
-        .with_ip_addr(*other.bound_addr().ip_addrs().next().unwrap());
+    let wrong = PeerAddr::new(NodeKey::generate().public())
+        .with_addr(*other.bound_addr().addrs.iter().next().unwrap());
     assert!(client_node.connect(wrong, APP).await.is_err());
     assert_eq!(waker.0.load(Ordering::SeqCst), 1);
 

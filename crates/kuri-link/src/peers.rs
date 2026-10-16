@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
+use crate::addr::PeerId;
 use ciborium::Value;
-use iroh::EndpointId;
 
 use crate::hooks::{AuthRequest, Authorizer, Caller, Denied, Origin};
 use crate::BoxFuture;
@@ -33,7 +33,7 @@ pub struct PeerSet {
 
 #[derive(Default)]
 struct Inner {
-    peers: BTreeSet<EndpointId>,
+    peers: BTreeSet<PeerId>,
     file: Option<PathBuf>,
 }
 
@@ -62,12 +62,12 @@ impl PeerSet {
         })
     }
 
-    pub fn contains(&self, peer: &EndpointId) -> bool {
+    pub fn contains(&self, peer: &PeerId) -> bool {
         self.read().peers.contains(peer)
     }
 
     /// The peers, in a stable order.
-    pub fn peers(&self) -> Vec<EndpointId> {
+    pub fn peers(&self) -> Vec<PeerId> {
         self.read().peers.iter().copied().collect()
     }
 
@@ -84,7 +84,7 @@ impl PeerSet {
     /// If the file cannot be written, `peer` is not admitted and the error is
     /// returned. A failure after the file was replaced leaves the file ahead
     /// of memory: the peer is admitted from the next restart, not now.
-    pub fn insert(&self, peer: EndpointId) -> io::Result<bool> {
+    pub fn insert(&self, peer: PeerId) -> io::Result<bool> {
         let mut inner = self.write();
         if !inner.peers.insert(peer) {
             return Ok(false);
@@ -102,7 +102,7 @@ impl PeerSet {
     /// If the file cannot be written, the error is returned but the removal
     /// stands: unpairing never fails open. The file may still list `peer`, so
     /// it could be admitted again after a restart; retry the removal.
-    pub fn remove(&self, peer: &EndpointId) -> io::Result<bool> {
+    pub fn remove(&self, peer: &PeerId) -> io::Result<bool> {
         let mut inner = self.write();
         if !inner.peers.remove(peer) {
             return Ok(false);
@@ -167,12 +167,12 @@ impl Inner {
     }
 }
 
-fn parse(text: &str) -> io::Result<BTreeSet<EndpointId>> {
+fn parse(text: &str) -> io::Result<BTreeSet<PeerId>> {
     text.lines()
         .map(str::trim)
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
         .map(|line| {
-            EndpointId::from_str(line).map_err(|e| {
+            PeerId::from_str(line).map_err(|e| {
                 io::Error::new(io::ErrorKind::InvalidData, format!("peer {line}: {e}"))
             })
         })

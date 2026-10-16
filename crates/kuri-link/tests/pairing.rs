@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use kuri_link::{
-    CallError, DenyAll, EndpointAddr, FaultCode, Methods, Node, PairError, Pairing, PeerSet,
-    Relays, SecretKey, Ticket, Value, PAIR_APP,
+    CallError, DenyAll, FaultCode, Methods, Node, NodeKey, PairError, Pairing, PeerAddr, PeerSet,
+    Relays, Ticket, Value, PAIR_APP,
 };
 
 const APP: &str = "echo";
@@ -21,7 +21,7 @@ fn echo() -> Methods {
     Methods::new().unary("echo", |_caller, args| async move { Ok(args) })
 }
 
-async fn back_end(pairing: &Pairing, key: SecretKey) -> Node {
+async fn back_end(pairing: &Pairing, key: NodeKey) -> Node {
     Node::builder()
         .secret_key(key)
         .relays(Relays::None)
@@ -51,7 +51,7 @@ fn refused(e: &PairError) -> bool {
 }
 
 /// Calls `echo` on the back end at `addr`.
-async fn echo_from(node: &Node, addr: EndpointAddr) -> Result<Value, CallError> {
+async fn echo_from(node: &Node, addr: PeerAddr) -> Result<Value, CallError> {
     let client = node.connect(addr, APP).await.expect("connects");
     client.call("echo", Value::Text("hi".into())).await
 }
@@ -61,7 +61,7 @@ struct Scratch(PathBuf);
 
 impl Scratch {
     fn new() -> Scratch {
-        let name = format!("kuri-link-{}", SecretKey::generate().public().fmt_short());
+        let name = format!("kuri-link-{}", NodeKey::generate().public().fmt_short());
         let dir = std::env::temp_dir().join(name);
         std::fs::create_dir_all(&dir).expect("scratch directory");
         Scratch(dir)
@@ -78,7 +78,7 @@ impl Drop for Scratch {
 async fn a_ticket_pairs_a_device_and_the_pairing_survives_a_restart() {
     let dir = Scratch::new();
     let file = dir.0.join("peers");
-    let server_key = SecretKey::generate();
+    let server_key = NodeKey::generate();
     let phone = front_end().await;
 
     let pairing = Pairing::new(PeerSet::open(&file).unwrap());
@@ -112,7 +112,7 @@ async fn a_ticket_pairs_a_device_and_the_pairing_survives_a_restart() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_ticket_admits_one_device_and_expires() {
     let pairing = Pairing::new(PeerSet::new());
-    let server = back_end(&pairing, SecretKey::generate()).await;
+    let server = back_end(&pairing, NodeKey::generate()).await;
     let first = front_end().await;
     let second = front_end().await;
 
@@ -136,7 +136,7 @@ async fn a_ticket_admits_one_device_and_expires() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_token_opens_only_the_pairing_door() {
     let pairing = Pairing::new(PeerSet::new());
-    let server = back_end(&pairing, SecretKey::generate()).await;
+    let server = back_end(&pairing, NodeKey::generate()).await;
     let phone = front_end().await;
     let ticket = pairing.issue(server.bound_addr(), MINUTE);
     let token = ticket.token.as_bytes().to_vec();
@@ -159,7 +159,7 @@ async fn a_token_opens_only_the_pairing_door() {
 #[tokio::test(flavor = "multi_thread")]
 async fn tickets_can_be_withdrawn_and_devices_unpaired() {
     let pairing = Pairing::new(PeerSet::new());
-    let server = back_end(&pairing, SecretKey::generate()).await;
+    let server = back_end(&pairing, NodeKey::generate()).await;
     let phone = front_end().await;
 
     let one = pairing.issue(server.bound_addr(), MINUTE);
@@ -226,10 +226,10 @@ async fn an_explicit_authorizer_decides_for_the_apps_and_pairing_still_works() {
 
 #[test]
 fn ticket_text_fits_a_qr_code_and_reads_back() {
-    let addr = EndpointAddr::new(SecretKey::generate().public())
-        .with_ip_addr("192.168.86.40:41234".parse().unwrap())
-        .with_ip_addr("[fd00::40]:41234".parse().unwrap())
-        .with_relay_url("https://relay.example.org".parse().unwrap());
+    let addr = PeerAddr::new(NodeKey::generate().public())
+        .with_addr("192.0.2.40:41234".parse().unwrap())
+        .with_addr("[2001:db8::40]:41234".parse().unwrap())
+        .with_relay("https://relay.example.org".parse().unwrap());
     let ticket = Pairing::new(PeerSet::new()).issue(addr, MINUTE);
     let text = ticket.to_string();
 
