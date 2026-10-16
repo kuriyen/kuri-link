@@ -195,5 +195,16 @@ fn write_atomically(path: &Path, bytes: &[u8]) -> io::Result<()> {
     }
     file.write_all(bytes)?;
     file.sync_all()?;
-    std::fs::rename(&tmp, path)
+    std::fs::rename(&tmp, path)?;
+    // The rename lives in the directory; until that is synced too, a power
+    // cut can bring back the old file and drop the change.
+    #[cfg(unix)]
+    {
+        let dir = match path.parent() {
+            Some(dir) if !dir.as_os_str().is_empty() => dir,
+            _ => Path::new("."),
+        };
+        std::fs::File::open(dir)?.sync_all()?;
+    }
+    Ok(())
 }
