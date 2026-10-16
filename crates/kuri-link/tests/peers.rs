@@ -61,3 +61,23 @@ fn a_peer_set_on_a_file_writes_every_change_through() {
     let e = PeerSet::open(&file).unwrap_err();
     assert_eq!(e.kind(), std::io::ErrorKind::InvalidData);
 }
+
+#[test]
+fn when_the_file_cannot_be_written_the_set_admits_less() {
+    let dir = Scratch::new();
+    let file = dir.0.join("peers");
+    let set = PeerSet::open(&file).unwrap();
+    let a = SecretKey::generate().public();
+    let b = SecretKey::generate().public();
+    set.insert(a).unwrap();
+
+    // A directory where the file should be: the replacing rename fails, as
+    // permissions would not when the tests run as root.
+    std::fs::remove_file(&file).unwrap();
+    std::fs::create_dir(&file).unwrap();
+
+    assert!(set.remove(&a).is_err());
+    assert!(!set.contains(&a), "a failed removal still stops admitting");
+    assert!(set.insert(b).is_err());
+    assert!(!set.contains(&b), "a failed insert admits nothing");
+}

@@ -18,8 +18,9 @@ use crate::BoxFuture;
 ///
 /// Opened on a file, every change is written through before the call returns:
 /// one key per line, the file replaced atomically and kept mode 0600, so a
-/// restart keeps every pairing. If the write fails the change is undone and
-/// the error returned, so the set in memory never admits more than the file.
+/// restart keeps every pairing. If the write fails the error is returned and
+/// the set in memory errs toward admitting less, so it never admits more than
+/// the file: an insert is undone, and a removal stands.
 /// The write is synchronous (a small file and an fsync); async code that
 /// changes the set often should do it on a blocking thread.
 ///
@@ -79,6 +80,10 @@ impl PeerSet {
     }
 
     /// Admits `peer`. Returns `false` if it was already admitted.
+    ///
+    /// If the file cannot be written, `peer` is not admitted and the error is
+    /// returned. A failure after the file was replaced leaves the file ahead
+    /// of memory: the peer is admitted from the next restart, not now.
     pub fn insert(&self, peer: EndpointId) -> io::Result<bool> {
         let mut inner = self.write();
         if !inner.peers.insert(peer) {
@@ -91,16 +96,18 @@ impl PeerSet {
         Ok(true)
     }
 
-    /// Stops admitting `peer`. Returns `false` if it was not admitted.
+    /// Stops admitting `peer`, at once. Returns `false` if it was not
+    /// admitted.
+    ///
+    /// If the file cannot be written, the error is returned but the removal
+    /// stands: unpairing never fails open. The file may still list `peer`, so
+    /// it could be admitted again after a restart; retry the removal.
     pub fn remove(&self, peer: &EndpointId) -> io::Result<bool> {
         let mut inner = self.write();
         if !inner.peers.remove(peer) {
             return Ok(false);
         }
-        if let Err(e) = inner.persist() {
-            inner.peers.insert(*peer);
-            return Err(e);
-        }
+        inner.persist()?;
         Ok(true)
     }
 
