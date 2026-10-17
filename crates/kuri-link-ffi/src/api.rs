@@ -255,7 +255,9 @@ pub struct LinkClient {
     inner: kuri_link::Client,
 }
 
-/// Which way a connection's data goes.
+/// Which way a connection's data goes. A kind of path added in a later 0.1.x
+/// release shows up as no path (`LinkClient::path` returns `None`), not as a
+/// new variant; new variants wait for the next 0.x release.
 #[derive(Debug, Clone)]
 pub enum LinkRoute {
     /// Straight to the peer at this socket address, e.g. `"192.0.2.40:41234"`.
@@ -282,7 +284,8 @@ impl LinkClient {
     /// The path requests use now: direct or through a relay. `None` in
     /// process, or while the connection has no path selected. iroh moves a
     /// connection from a relay to a direct path once hole punching succeeds,
-    /// and back when the network changes, so ask again to follow it.
+    /// and back when the network changes, so ask again to follow it. A kind of
+    /// path this release has no `LinkRoute` for is also `None`.
     #[frb(sync)]
     pub fn path(&self) -> Option<LinkPath> {
         let path = self.inner.path()?;
@@ -293,6 +296,7 @@ impl LinkClient {
             kuri_link::Route::Relay(url) => LinkRoute::Relay {
                 url: url.to_string(),
             },
+            _ => return None,
         };
         Some(LinkPath {
             route,

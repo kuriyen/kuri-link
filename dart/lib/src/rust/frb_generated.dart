@@ -1676,7 +1676,8 @@ class LinkClientImpl extends RustOpaque implements LinkClient {
   /// The path requests use now: direct or through a relay. `None` in
   /// process, or while the connection has no path selected. iroh moves a
   /// connection from a relay to a direct path once hole punching succeeds,
-  /// and back when the network changes, so ask again to follow it.
+  /// and back when the network changes, so ask again to follow it. A kind of
+  /// path this release has no `LinkRoute` for is also `None`.
   LinkPath? path() =>
       KuriLinkLib.instance.api.crateApiLinkClientPath(that: this);
 }

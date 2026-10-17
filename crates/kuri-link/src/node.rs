@@ -347,8 +347,10 @@ impl std::fmt::Debug for Client {
     }
 }
 
-/// Which way a connection's data goes.
+/// Which way a connection's data goes. More kinds of path may come, so a
+/// `match` on it needs a wildcard arm.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Route {
     /// Straight to the peer at this address: on the same network, or through
     /// NAT by hole punching.
@@ -357,8 +359,9 @@ pub enum Route {
     Relay(RelayUrl),
 }
 
-/// The path a connection uses at one moment.
+/// The path a connection uses at one moment. More fields may come.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct PathInfo {
     pub route: Route,
     /// QUIC's current estimate of the round-trip time on this path.
