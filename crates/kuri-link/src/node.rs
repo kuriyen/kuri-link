@@ -102,7 +102,8 @@ impl NodeBuilder {
         self
     }
 
-    /// Binds the UDP socket to `addr` instead of iroh's default sockets.
+    /// Binds only a UDP socket at `addr`, instead of iroh's default sockets on
+    /// every interface of both address families.
     pub fn bind_addr(mut self, addr: SocketAddr) -> Self {
         self.bind = Some(addr);
         self
@@ -187,7 +188,11 @@ impl NodeBuilder {
             Relays::PublicDefault => builder.relay_mode(RelayMode::Default),
         };
         if let Some(addr) = self.bind {
+            // On its own, iroh's bind_addr replaces only the default socket of
+            // the same address family; the other family's stays on every
+            // interface.
             builder = builder
+                .clear_ip_transports()
                 .bind_addr(addr)
                 .map_err(|e| Error::Bind(e.to_string()))?;
         }
@@ -631,5 +636,24 @@ fn fault_of(e: AppError) -> Fault {
         AppError::NoSuchMethod(m) => Fault::new(FaultCode::NoSuchMethod, m),
         AppError::BadArgs(m) => Fault::new(FaultCode::BadRequest, m),
         AppError::Failed(m) => Fault::new(FaultCode::App, m),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn a_bind_address_is_the_only_socket() {
+        let node = Node::builder()
+            .relays(Relays::None)
+            .bind_addr("127.0.0.1:0".parse().unwrap())
+            .bind()
+            .await
+            .unwrap();
+        let sockets = node.endpoint.bound_sockets();
+        assert_eq!(sockets.len(), 1, "bound {sockets:?}");
+        assert_eq!(sockets[0].ip(), std::net::Ipv4Addr::LOCALHOST);
+        node.shutdown().await;
     }
 }

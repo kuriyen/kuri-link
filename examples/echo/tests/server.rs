@@ -4,7 +4,7 @@
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
 
-use kuri_link::{Node, RelayUrl, Relays, Ticket, Value};
+use kuri_link::{Node, RelayUrl, Relays, Route, Ticket, Value};
 
 /// Stops the server however the test ends.
 struct Server(Child);
@@ -72,11 +72,13 @@ async fn with_a_relay_the_ticket_reaches_the_server_through_it() {
         "the ticket names the relay"
     );
 
-    // Drop the direct address, as if the phone were on another network: the
-    // relay is then the only way to the server.
+    // Drop the direct address, and put the phone on IPv6 loopback while the
+    // server is on IPv4, as if they were on different networks: the relay,
+    // reached over TCP, is then the only way between them.
     ticket.addr.addrs.clear();
     let phone = Node::builder()
-        .relays(Relays::Custom(vec![relay]))
+        .relays(Relays::Custom(vec![relay.clone()]))
+        .bind_addr("[::1]:0".parse().unwrap())
         .bind()
         .await
         .unwrap();
@@ -87,6 +89,7 @@ async fn with_a_relay_the_ticket_reaches_the_server_through_it() {
     let echo = phone.connect(addr, kuri_link_echo::APP).await.unwrap();
     let hi = Value::Text("hi".into());
     assert_eq!(echo.call("echo", hi.clone()).await.unwrap(), hi);
+    assert_eq!(echo.path().unwrap().route, Route::Relay(relay));
 
     phone.shutdown().await;
     drop(server);

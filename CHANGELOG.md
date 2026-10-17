@@ -25,6 +25,9 @@ depend on a tag.
 
 - `Client::path()` reports the path a remote client's requests use now,
   `Route::Direct(addr)` or `Route::Relay(url)`, with its round-trip time.
+- Fixed: `NodeBuilder::bind_addr` binds only the socket it names. Before, iroh
+  still bound the unspecified address of the other family, so a node bound to
+  `127.0.0.1` also listened on `[::]`.
 
 ### Examples
 
