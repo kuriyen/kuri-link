@@ -1,8 +1,10 @@
 // One app whose back end, `echo`, runs in this process or on another device.
-// Which one is a setting; the code that uses the back end is the same.
+// Which one is a setting; the code that uses the back end is the same. It runs
+// on Linux and Android:
 //
 //     flutter run -d linux                                       # in-process
 //     flutter run -d linux --dart-entrypoint-args=--backend=remote
+//     flutter run -d <android device>
 //
 // For a remote back end, start one first and paste the ticket it prints:
 //
@@ -16,12 +18,13 @@ import 'dart:typed_data';
 import 'package:cbor/cbor.dart';
 import 'package:flutter/material.dart';
 import 'package:kuri_link/kuri_link.dart';
+import 'package:path_provider/path_provider.dart';
 
 const app = 'echo';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
-  final dir = dataDir();
+  final dir = await dataDir();
   final node = await startLink(dir);
   runApp(
     EchoApp(
@@ -32,19 +35,21 @@ Future<void> main(List<String> args) async {
   );
 }
 
-/// Where the device key and the paired back end are kept.
-String dataDir() {
-  final env = Platform.environment;
-  final base = env['XDG_DATA_HOME'] ?? '${env['HOME']}/.local/share';
-  return '$base/kuri-link-desktop';
-}
+/// Where the device key and the paired back end are kept: the app's own
+/// directory, `~/.local/share/io.github.kuriyen.kuri_link_example` on Linux.
+Future<String> dataDir() async => (await getApplicationSupportDirectory()).path;
+
+/// The app's one native library. On Linux it is bundled next to the
+/// executable; on Android it is in the APK, where the loader finds it by name.
+String nativeLibrary() => Platform.isAndroid
+    ? 'libkuri_link_echo.so'
+    : '${File(Platform.resolvedExecutable).parent.path}/lib/libkuri_link_echo.so';
 
 /// Loads the app's one native library, which holds both the Kuri Link bindings
 /// and the echo back end, registers that back end, and starts this device's
 /// node.
 Future<LinkNode> startLink(String dataDir) async {
-  final exe = File(Platform.resolvedExecutable).parent.path;
-  final library = '$exe/lib/libkuri_link_echo.so';
+  final library = nativeLibrary();
   await KuriLinkLib.init(externalLibrary: ExternalLibrary.open(library));
   DynamicLibrary.open(library).lookupFunction<Void Function(), void Function()>(
     'kuri_link_echo_register',

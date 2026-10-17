@@ -1,13 +1,19 @@
 // Drives the real app: the same panel, first with the back end in this
 // process, then with it in another process, paired by ticket and reached over
-// iroh on loopback. Build the server first, from the repository root:
+// iroh. On Linux the test starts that process itself, on loopback. Build the
+// server first, from the repository root:
 //
 //     cargo build -p kuri-link-echo --bin kuri-link-echo-server
-//     cd examples/desktop && flutter test integration_test -d linux
+//     cd examples/app && flutter test integration_test -d linux
 //
 // KURI_LINK_TARGET names another Cargo target directory (default
 // ../../target/debug). KURI_LINK_SCREENSHOTS names a directory to save a
 // screenshot of each back end's answers in.
+//
+// A phone or emulator cannot start a process on the host, so there the server
+// runs first and its ticket comes in as a define; see README.md:
+//
+//     flutter test integration_test -d <device> --dart-define=KURI_LINK_TICKET=...
 
 import 'dart:convert';
 import 'dart:io';
@@ -17,9 +23,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show OffsetLayer;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:kuri_link_desktop/main.dart';
+import 'package:kuri_link_example/main.dart';
 
 final target = Platform.environment['KURI_LINK_TARGET'] ?? '../../target/debug';
+const givenTicket = String.fromEnvironment('KURI_LINK_TICKET');
 
 /// Pumps frames until `finder` finds something. Calls cross into Rust and
 /// back, so real time has to pass, not just fake time.
@@ -58,27 +65,32 @@ Future<Map<String, String>> pressAll(WidgetTester tester) async {
   return answers;
 }
 
+/// Starts an echo server on loopback for this test and returns its ticket.
+Future<String> startServer() async {
+  final server = await Process.start('$target/kuri-link-echo-server', [
+    '--bind',
+    '127.0.0.1:0',
+  ]);
+  server.stderr.drain<void>();
+  addTearDown(() async {
+    server.kill();
+    await server.exitCode;
+  });
+  return server.stdout
+      .transform(utf8.decoder)
+      .transform(const LineSplitter())
+      .first;
+}
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('the same panel answers alike in-process and remote', (
     tester,
   ) async {
-    final dir = await Directory.systemTemp.createTemp('kuri-link-desktop-');
-    final server = await Process.start('$target/kuri-link-echo-server', [
-      '--bind',
-      '127.0.0.1:0',
-    ]);
-    server.stderr.drain<void>();
-    final ticket = await server.stdout
-        .transform(utf8.decoder)
-        .transform(const LineSplitter())
-        .first;
-    addTearDown(() async {
-      server.kill();
-      await server.exitCode;
-      await dir.delete(recursive: true);
-    });
+    final dir = await Directory.systemTemp.createTemp('kuri-link-example-');
+    addTearDown(() => dir.delete(recursive: true));
+    final ticket = givenTicket.isNotEmpty ? givenTicket : await startServer();
 
     final node = await startLink(dir.path);
     await tester.pumpWidget(

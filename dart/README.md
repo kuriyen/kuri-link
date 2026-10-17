@@ -94,8 +94,9 @@ DynamicLibrary.open(appLibrary)
     .lookupFunction<Void Function(), void Function()>('my_app_register')();
 ```
 
-`examples/echo` is such a crate, and `examples/desktop` is a Flutter app built
-on it: its `linux/CMakeLists.txt` runs Cargo and bundles the library. An app
+`examples/echo` is such a crate, and `examples/app` is a Flutter app built on
+it: its `linux/CMakeLists.txt` and `android/app/build.gradle.kts` run Cargo and
+bundle the library. An app
 with no local back end can use `libkuri_link_ffi.so` from this repository's
 build directly.
 

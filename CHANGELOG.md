@@ -19,6 +19,14 @@ depend on a tag.
   `KURI-LINK:` followed by base32. Peer files and tickets written by 0.1.0 still
   read in later releases.
 
+## Unreleased
+
+### Examples
+
+- `examples/desktop` is now `examples/app`, and runs on Android as well as
+  Linux. Its Gradle build runs Cargo through cargo-ndk for arm64-v8a and
+  x86_64, as its CMake build does on Linux.
+
 ## 0.1.0 — 2026-10-16
 
 The first tagged release.

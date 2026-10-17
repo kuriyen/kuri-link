@@ -74,7 +74,7 @@ crates/kuri-link      the library: node, client, wire format, hooks, pairing
 crates/kuri-link-ffi  the plain-typed surface a Dart front end binds to
 dart/                 the Dart package, kuri_link (bindings generated; see its README)
 examples/echo         an example back end: linked into an app, or run as a server
-examples/desktop      a Flutter app for Linux on that back end, in-process or remote
+examples/app          a Flutter app for Linux and Android on that back end, in-process or remote
 docs/design.md        wire format and design decisions
 ```
 

@@ -45,11 +45,11 @@ static void my_application_activate(GApplication* application) {
   if (use_header_bar) {
     GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
     gtk_widget_show(GTK_WIDGET(header_bar));
-    gtk_header_bar_set_title(header_bar, "kuri_link_desktop");
+    gtk_header_bar_set_title(header_bar, "Kuri Link");
     gtk_header_bar_set_show_close_button(header_bar, TRUE);
     gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
   } else {
-    gtk_window_set_title(window, "kuri_link_desktop");
+    gtk_window_set_title(window, "Kuri Link");
   }
 
   gtk_window_set_default_size(window, 1280, 720);
