@@ -21,6 +21,11 @@ depend on a tag.
 
 ## Unreleased
 
+### `kuri-link`
+
+- `Client::path()` reports the path a remote client's requests use now,
+  `Route::Direct(addr)` or `Route::Relay(url)`, with its round-trip time.
+
 ### Examples
 
 - `examples/desktop` is now `examples/app`, and runs on Android as well as

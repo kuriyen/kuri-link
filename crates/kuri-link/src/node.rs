@@ -2,11 +2,12 @@
 
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use ciborium::Value;
 use iroh::endpoint::{presets, Connection};
 use iroh::protocol::{AcceptError, ProtocolHandler, Router};
-use iroh::{Endpoint, RelayMode};
+use iroh::{Endpoint, RelayMode, TransportAddr};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
@@ -341,6 +342,24 @@ impl std::fmt::Debug for Client {
     }
 }
 
+/// Which way a connection's data goes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Route {
+    /// Straight to the peer at this address: on the same network, or through
+    /// NAT by hole punching.
+    Direct(SocketAddr),
+    /// Through this relay, which forwards packets it cannot read.
+    Relay(RelayUrl),
+}
+
+/// The path a connection uses at one moment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PathInfo {
+    pub route: Route,
+    /// QUIC's current estimate of the round-trip time on this path.
+    pub rtt: Duration,
+}
+
 /// Size of the in-memory pipe behind an in-process `open`.
 const LOCAL_PIPE: usize = 64 * 1024;
 
@@ -377,6 +396,29 @@ impl Client {
             Inner::Remote { conn, .. } => Some(PeerId::from_iroh(conn.remote_id())),
             Inner::Local { .. } => None,
         }
+    }
+
+    /// The path requests to a remote back end use now: direct or through a
+    /// relay, with its round-trip time. `None` in process, or while the
+    /// connection has no path selected.
+    ///
+    /// A snapshot: iroh moves a connection from a relay to a direct path once
+    /// hole punching succeeds, and back when the network changes.
+    pub fn path(&self) -> Option<PathInfo> {
+        let Inner::Remote { conn, .. } = &self.inner else {
+            return None;
+        };
+        let paths = conn.paths();
+        let path = paths.iter().find(|p| p.is_selected())?;
+        let route = match path.remote_addr() {
+            TransportAddr::Ip(addr) => Route::Direct(*addr),
+            TransportAddr::Relay(url) => Route::Relay(RelayUrl::from_iroh(url.clone())),
+            _ => return None,
+        };
+        Some(PathInfo {
+            route,
+            rtt: path.rtt(),
+        })
     }
 
     fn header(&self, op: Op, method: &str, args: Value) -> Header {

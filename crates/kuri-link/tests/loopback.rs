@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use kuri_link::{
     Allowlist, BoxFuture, CallError, Client, FaultCode, Methods, Node, NodeKey, PeerAddr, Relays,
-    Value, Waker,
+    Route, Value, Waker,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -129,9 +129,13 @@ async fn a_paired_peer_and_an_in_process_back_end_behave_the_same() {
         .expect("connects");
     assert_eq!(remote.peer(), Some(server.id()));
     exercise(&remote, &key.public().to_string()).await;
+    // Relays are off, so the only path is the server's own socket.
+    let server_socket = *server.bound_addr().addrs.first().unwrap();
+    assert_eq!(remote.path().unwrap().route, Route::Direct(server_socket));
 
     let local = Client::in_process(methods());
     assert_eq!(local.peer(), None);
+    assert_eq!(local.path(), None);
     exercise(&local, "in-process").await;
 
     client_node.shutdown().await;

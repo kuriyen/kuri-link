@@ -114,6 +114,10 @@ impl fmt::Debug for NodeKey {
 pub struct RelayUrl(iroh::RelayUrl);
 
 impl RelayUrl {
+    pub(crate) fn from_iroh(url: iroh::RelayUrl) -> RelayUrl {
+        RelayUrl(url)
+    }
+
     pub(crate) fn to_iroh(&self) -> iroh::RelayUrl {
         self.0.clone()
     }
