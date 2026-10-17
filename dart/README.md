@@ -42,6 +42,8 @@ final sum = cbor.decode(await client.call(
 - `client.call(method, argsCbor)`: the CBOR-encoded result. Encode and decode
   with the [`cbor`](https://pub.dev/packages/cbor) package; empty `argsCbor`
   stands for CBOR null.
+- `client.path()`: the path a remote client's requests use now, direct or
+  through a relay, with its round-trip time; `null` in process.
 - `client.open(method, argsCbor)`: a `LinkStream` to a method the back end
   serves with `Methods::duplex`: `write`, `finish`, `read`, `readToEnd`.
 - `client.isLocal()`.

@@ -100,6 +100,9 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
   FaultCode dco_decode_box_autoadd_fault_code(dynamic raw);
 
   @protected
+  LinkPath dco_decode_box_autoadd_link_path(dynamic raw);
+
+  @protected
   PeerAddr dco_decode_box_autoadd_peer_addr(dynamic raw);
 
   @protected
@@ -112,6 +115,12 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
   LinkError dco_decode_link_error(dynamic raw);
 
   @protected
+  LinkPath dco_decode_link_path(dynamic raw);
+
+  @protected
+  LinkRoute dco_decode_link_route(dynamic raw);
+
+  @protected
   List<String> dco_decode_list_String(dynamic raw);
 
   @protected
@@ -122,6 +131,9 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
 
   @protected
   FaultCode? dco_decode_opt_box_autoadd_fault_code(dynamic raw);
+
+  @protected
+  LinkPath? dco_decode_opt_box_autoadd_link_path(dynamic raw);
 
   @protected
   Uint8List? dco_decode_opt_list_prim_u_8_strict(dynamic raw);
@@ -211,6 +223,9 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
   FaultCode sse_decode_box_autoadd_fault_code(SseDeserializer deserializer);
 
   @protected
+  LinkPath sse_decode_box_autoadd_link_path(SseDeserializer deserializer);
+
+  @protected
   PeerAddr sse_decode_box_autoadd_peer_addr(SseDeserializer deserializer);
 
   @protected
@@ -221,6 +236,12 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
 
   @protected
   LinkError sse_decode_link_error(SseDeserializer deserializer);
+
+  @protected
+  LinkPath sse_decode_link_path(SseDeserializer deserializer);
+
+  @protected
+  LinkRoute sse_decode_link_route(SseDeserializer deserializer);
 
   @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer);
@@ -235,6 +256,9 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
   FaultCode? sse_decode_opt_box_autoadd_fault_code(
     SseDeserializer deserializer,
   );
+
+  @protected
+  LinkPath? sse_decode_opt_box_autoadd_link_path(SseDeserializer deserializer);
 
   @protected
   Uint8List? sse_decode_opt_list_prim_u_8_strict(SseDeserializer deserializer);
@@ -336,6 +360,12 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_link_path(
+    LinkPath self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_peer_addr(
     PeerAddr self,
     SseSerializer serializer,
@@ -349,6 +379,12 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
 
   @protected
   void sse_encode_link_error(LinkError self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_link_path(LinkPath self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_link_route(LinkRoute self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
@@ -365,6 +401,12 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
   @protected
   void sse_encode_opt_box_autoadd_fault_code(
     FaultCode? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_link_path(
+    LinkPath? self,
     SseSerializer serializer,
   );
 

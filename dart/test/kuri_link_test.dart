@@ -131,6 +131,14 @@ void main() {
       );
       expect(client.isLocal(), name == 'local');
       await exercise(client, name == 'local' ? 'in-process' : node.id());
+      // Remotely, with relays off, the path is the server's own socket.
+      final path = client.path();
+      if (name == 'local') {
+        expect(path, isNull);
+      } else {
+        expect(path!.route, LinkRoute.direct(addr: backEnd.addrs.single));
+        expect(path.rttMicros, greaterThan(0));
+      }
     });
   }
 

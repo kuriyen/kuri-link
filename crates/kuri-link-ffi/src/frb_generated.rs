@@ -40,7 +40,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1021453157;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 491397966;
 
 // Section: executor
 
@@ -215,6 +215,52 @@ fn wire__crate__api__LinkClient_open_impl(
                     .await,
                 )
             }
+        },
+    )
+}
+fn wire__crate__api__LinkClient_path_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "LinkClient_path",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<LinkClient>,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let mut api_that_guard = None;
+                let decode_indices_ =
+                    flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                        flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                            &api_that, 0, false,
+                        ),
+                    ]);
+                for i in decode_indices_ {
+                    match i {
+                        0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                        _ => unreachable!(),
+                    }
+                }
+                let api_that_guard = api_that_guard.unwrap();
+                let output_ok = Ok::<_, ()>(crate::api::LinkClient::path(&*api_that_guard))?;
+                std::result::Result::Ok(output_ok)
+            })())
         },
     )
 }
@@ -1003,6 +1049,38 @@ impl SseDecode for crate::api::LinkError {
     }
 }
 
+impl SseDecode for crate::api::LinkPath {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_route = <crate::api::LinkRoute>::sse_decode(deserializer);
+        let mut var_rttMicros = <u32>::sse_decode(deserializer);
+        return crate::api::LinkPath {
+            route: var_route,
+            rtt_micros: var_rttMicros,
+        };
+    }
+}
+
+impl SseDecode for crate::api::LinkRoute {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut tag_ = <i32>::sse_decode(deserializer);
+        match tag_ {
+            0 => {
+                let mut var_addr = <String>::sse_decode(deserializer);
+                return crate::api::LinkRoute::Direct { addr: var_addr };
+            }
+            1 => {
+                let mut var_url = <String>::sse_decode(deserializer);
+                return crate::api::LinkRoute::Relay { url: var_url };
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
 impl SseDecode for Vec<String> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1032,6 +1110,17 @@ impl SseDecode for Option<crate::api::FaultCode> {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         if (<bool>::sse_decode(deserializer)) {
             return Some(<crate::api::FaultCode>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<crate::api::LinkPath> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<crate::api::LinkPath>::sse_decode(deserializer));
         } else {
             return None;
         }
@@ -1100,16 +1189,16 @@ fn pde_ffi_dispatcher_primary_impl(
     match func_id {
         1 => wire__crate__api__LinkClient_call_impl(port, ptr, rust_vec_len, data_len),
         3 => wire__crate__api__LinkClient_open_impl(port, ptr, rust_vec_len, data_len),
-        4 => wire__crate__api__LinkNode_connect_impl(port, ptr, rust_vec_len, data_len),
-        6 => wire__crate__api__LinkNode_open_app_impl(port, ptr, rust_vec_len, data_len),
-        7 => wire__crate__api__LinkNode_pair_impl(port, ptr, rust_vec_len, data_len),
-        9 => wire__crate__api__LinkNode_shutdown_impl(port, ptr, rust_vec_len, data_len),
-        10 => wire__crate__api__LinkNode_start_impl(port, ptr, rust_vec_len, data_len),
-        11 => wire__crate__api__LinkStream_finish_impl(port, ptr, rust_vec_len, data_len),
-        12 => wire__crate__api__LinkStream_read_impl(port, ptr, rust_vec_len, data_len),
-        13 => wire__crate__api__LinkStream_read_to_end_impl(port, ptr, rust_vec_len, data_len),
-        14 => wire__crate__api__LinkStream_write_impl(port, ptr, rust_vec_len, data_len),
-        15 => wire__crate__api__open_local_impl(port, ptr, rust_vec_len, data_len),
+        5 => wire__crate__api__LinkNode_connect_impl(port, ptr, rust_vec_len, data_len),
+        7 => wire__crate__api__LinkNode_open_app_impl(port, ptr, rust_vec_len, data_len),
+        8 => wire__crate__api__LinkNode_pair_impl(port, ptr, rust_vec_len, data_len),
+        10 => wire__crate__api__LinkNode_shutdown_impl(port, ptr, rust_vec_len, data_len),
+        11 => wire__crate__api__LinkNode_start_impl(port, ptr, rust_vec_len, data_len),
+        12 => wire__crate__api__LinkStream_finish_impl(port, ptr, rust_vec_len, data_len),
+        13 => wire__crate__api__LinkStream_read_impl(port, ptr, rust_vec_len, data_len),
+        14 => wire__crate__api__LinkStream_read_to_end_impl(port, ptr, rust_vec_len, data_len),
+        15 => wire__crate__api__LinkStream_write_impl(port, ptr, rust_vec_len, data_len),
+        16 => wire__crate__api__open_local_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1123,9 +1212,10 @@ fn pde_ffi_dispatcher_sync_impl(
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
         2 => wire__crate__api__LinkClient_is_local_impl(ptr, rust_vec_len, data_len),
-        5 => wire__crate__api__LinkNode_id_impl(ptr, rust_vec_len, data_len),
-        8 => wire__crate__api__LinkNode_relays_impl(ptr, rust_vec_len, data_len),
-        16 => wire__crate__api__ticket_back_end_impl(ptr, rust_vec_len, data_len),
+        4 => wire__crate__api__LinkClient_path_impl(ptr, rust_vec_len, data_len),
+        6 => wire__crate__api__LinkNode_id_impl(ptr, rust_vec_len, data_len),
+        9 => wire__crate__api__LinkNode_relays_impl(ptr, rust_vec_len, data_len),
+        17 => wire__crate__api__ticket_back_end_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1230,6 +1320,44 @@ impl flutter_rust_bridge::IntoDart for crate::api::LinkError {
 impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::LinkError {}
 impl flutter_rust_bridge::IntoIntoDart<crate::api::LinkError> for crate::api::LinkError {
     fn into_into_dart(self) -> crate::api::LinkError {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::LinkPath {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.route.into_into_dart().into_dart(),
+            self.rtt_micros.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::LinkPath {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::LinkPath> for crate::api::LinkPath {
+    fn into_into_dart(self) -> crate::api::LinkPath {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::LinkRoute {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            crate::api::LinkRoute::Direct { addr } => {
+                [0.into_dart(), addr.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::LinkRoute::Relay { url } => {
+                [1.into_dart(), url.into_into_dart().into_dart()].into_dart()
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::LinkRoute {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::LinkRoute> for crate::api::LinkRoute {
+    fn into_into_dart(self) -> crate::api::LinkRoute {
         self
     }
 }
@@ -1372,6 +1500,33 @@ impl SseEncode for crate::api::LinkError {
     }
 }
 
+impl SseEncode for crate::api::LinkPath {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <crate::api::LinkRoute>::sse_encode(self.route, serializer);
+        <u32>::sse_encode(self.rtt_micros, serializer);
+    }
+}
+
+impl SseEncode for crate::api::LinkRoute {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        match self {
+            crate::api::LinkRoute::Direct { addr } => {
+                <i32>::sse_encode(0, serializer);
+                <String>::sse_encode(addr, serializer);
+            }
+            crate::api::LinkRoute::Relay { url } => {
+                <i32>::sse_encode(1, serializer);
+                <String>::sse_encode(url, serializer);
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
+    }
+}
+
 impl SseEncode for Vec<String> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1398,6 +1553,16 @@ impl SseEncode for Option<crate::api::FaultCode> {
         <bool>::sse_encode(self.is_some(), serializer);
         if let Some(value) = self {
             <crate::api::FaultCode>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<crate::api::LinkPath> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <crate::api::LinkPath>::sse_encode(value, serializer);
         }
     }
 }

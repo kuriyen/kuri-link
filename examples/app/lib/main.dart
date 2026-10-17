@@ -26,6 +26,8 @@ import 'package:flutter_zxing/flutter_zxing.dart';
 import 'package:kuri_link/kuri_link.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'probe.dart';
+
 const app = 'echo';
 
 Future<void> main(List<String> args) async {
@@ -468,6 +470,10 @@ class _EchoPanelState extends State<EchoPanel> {
             ),
           ],
         ),
+        if (!client.isLocal()) ...[
+          const SizedBox(height: 12),
+          Probe(client: client),
+        ],
         const SizedBox(height: 12),
         Expanded(
           child: ListView(

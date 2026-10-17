@@ -9,7 +9,7 @@ import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'api.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `decode_args`, `from_core`, `new`, `other`, `parse`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`
 
 /// The back end a pairing ticket names, read without redeeming the ticket.
 /// An app starts its node with the relays listed here before it pairs, so the
@@ -36,6 +36,12 @@ abstract class LinkClient implements RustOpaqueInterface {
     required String method,
     required List<int> argsCbor,
   });
+
+  /// The path requests use now: direct or through a relay. `None` in
+  /// process, or while the connection has no path selected. iroh moves a
+  /// connection from a relay to a direct path once hole punching succeeds,
+  /// and back when the network changes, so ask again to follow it.
+  LinkPath? path();
 }
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<LinkNode>>
@@ -156,6 +162,38 @@ class LinkError implements FrbException {
           runtimeType == other.runtimeType &&
           fault == other.fault &&
           message == other.message;
+}
+
+/// The path a remote client's requests use at one moment.
+class LinkPath {
+  final LinkRoute route;
+
+  /// QUIC's current estimate of the round-trip time, in microseconds.
+  final int rttMicros;
+
+  const LinkPath({required this.route, required this.rttMicros});
+
+  @override
+  int get hashCode => route.hashCode ^ rttMicros.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LinkPath &&
+          runtimeType == other.runtimeType &&
+          route == other.route &&
+          rttMicros == other.rttMicros;
+}
+
+@freezed
+sealed class LinkRoute with _$LinkRoute {
+  const LinkRoute._();
+
+  /// Straight to the peer at this socket address, e.g. `"192.0.2.40:41234"`.
+  const factory LinkRoute.direct({required String addr}) = LinkRoute_Direct;
+
+  /// Through this relay, which forwards packets it cannot read.
+  const factory LinkRoute.relay({required String url}) = LinkRoute_Relay;
 }
 
 /// How to reach a peer: its key, plus any addresses known out of band.

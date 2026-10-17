@@ -42,6 +42,9 @@ depend on a tag.
   end on another network can reach the server when no direct path exists.
 - The app starts its node with the relays its back end names: from the ticket
   when it pairs, from the stored address on later launches.
+- With a remote back end, the app's **Measure** button makes one call a second
+  and logs each one's round-trip time and path as CSV, for testing on real
+  networks.
 
 ### Dart package
 
@@ -49,6 +52,8 @@ depend on a tag.
   it, so an app can start its node with the back end's relays before pairing.
 - `LinkNode.relays()` lists the relays a node started with, and
   `LinkNode.shutdown()` closes it.
+- `LinkClient.path()` reports the path a remote client's requests use now,
+  `LinkRoute.direct(addr)` or `LinkRoute.relay(url)`, with its round-trip time.
 
 ## 0.1.0 — 2026-10-16
 

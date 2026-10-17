@@ -74,6 +74,23 @@ pairing; on later launches it uses the relays of the address it kept. The relay
 forwards encrypted packets and sees which keys talk to each other, never what
 they say.
 
+## Measure
+
+With a remote back end, **Measure** makes one `echo` call a second until
+**Stop**, and shows, per path (direct or through a relay), how many calls went
+that way and their median and 95th-percentile round-trip times. Each call is
+logged as a line of CSV: the time, whether it succeeded, the round-trip time,
+the path, and QUIC's own estimate of the path's round-trip time. A call that
+waits while the network changes under it holds up the next ones, so the log
+shows the gap.
+
+The log is in the app's external files directory on Android, which `adb` can
+read without root, and in its support directory on Linux:
+
+```sh
+adb pull /sdcard/Android/data/io.github.kuriyen.kuri_link_example/files/ .
+```
+
 ## Where the app keeps things
 
 The device key and the paired address live in the app's support directory:

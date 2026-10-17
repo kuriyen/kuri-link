@@ -66,7 +66,7 @@ class KuriLinkLib
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -1021453157;
+  int get rustContentHash => 491397966;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -91,6 +91,8 @@ abstract class KuriLinkLibApi extends BaseApi {
     required String method,
     required List<int> argsCbor,
   });
+
+  LinkPath? crateApiLinkClientPath({required LinkClient that});
 
   Future<LinkClient> crateApiLinkNodeConnect({
     required LinkNode that,
@@ -280,6 +282,32 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   );
 
   @override
+  LinkPath? crateApiLinkClientPath({required LinkClient that}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLinkClient(
+            that,
+            serializer,
+          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_link_path,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiLinkClientPathConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLinkClientPathConstMeta =>
+      const TaskConstMeta(debugName: "LinkClient_path", argNames: ["that"]);
+
+  @override
   Future<LinkClient> crateApiLinkNodeConnect({
     required LinkNode that,
     required PeerAddr peer,
@@ -300,7 +328,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 4,
+            funcId: 5,
             port: port_,
           );
         },
@@ -331,7 +359,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 5)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -368,7 +396,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 6,
+            funcId: 7,
             port: port_,
           );
         },
@@ -406,7 +434,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 8,
             port: port_,
           );
         },
@@ -436,7 +464,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 8)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 9)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_String,
@@ -465,7 +493,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 10,
             port: port_,
           );
         },
@@ -497,7 +525,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 11,
             port: port_,
           );
         },
@@ -531,7 +559,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 12,
             port: port_,
           );
         },
@@ -566,7 +594,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 13,
             port: port_,
           );
         },
@@ -599,7 +627,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 14,
             port: port_,
           );
         },
@@ -637,7 +665,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 15,
             port: port_,
           );
         },
@@ -667,7 +695,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 16,
             port: port_,
           );
         },
@@ -693,7 +721,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(ticket, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 16)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 17)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_peer_addr,
@@ -852,6 +880,12 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   }
 
   @protected
+  LinkPath dco_decode_box_autoadd_link_path(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_link_path(raw);
+  }
+
+  @protected
   PeerAddr dco_decode_box_autoadd_peer_addr(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_peer_addr(raw);
@@ -882,6 +916,31 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   }
 
   @protected
+  LinkPath dco_decode_link_path(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return LinkPath(
+      route: dco_decode_link_route(arr[0]),
+      rttMicros: dco_decode_u_32(arr[1]),
+    );
+  }
+
+  @protected
+  LinkRoute dco_decode_link_route(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    switch (raw[0]) {
+      case 0:
+        return LinkRoute_Direct(addr: dco_decode_String(raw[1]));
+      case 1:
+        return LinkRoute_Relay(url: dco_decode_String(raw[1]));
+      default:
+        throw Exception("unreachable");
+    }
+  }
+
+  @protected
   List<String> dco_decode_list_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_String).toList();
@@ -903,6 +962,12 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   FaultCode? dco_decode_opt_box_autoadd_fault_code(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_fault_code(raw);
+  }
+
+  @protected
+  LinkPath? dco_decode_opt_box_autoadd_link_path(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_link_path(raw);
   }
 
   @protected
@@ -1098,6 +1163,12 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   }
 
   @protected
+  LinkPath sse_decode_box_autoadd_link_path(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_link_path(deserializer));
+  }
+
+  @protected
   PeerAddr sse_decode_box_autoadd_peer_addr(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_peer_addr(deserializer));
@@ -1122,6 +1193,31 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
     var var_fault = sse_decode_opt_box_autoadd_fault_code(deserializer);
     var var_message = sse_decode_String(deserializer);
     return LinkError(fault: var_fault, message: var_message);
+  }
+
+  @protected
+  LinkPath sse_decode_link_path(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_route = sse_decode_link_route(deserializer);
+    var var_rttMicros = sse_decode_u_32(deserializer);
+    return LinkPath(route: var_route, rttMicros: var_rttMicros);
+  }
+
+  @protected
+  LinkRoute sse_decode_link_route(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var tag_ = sse_decode_i_32(deserializer);
+    switch (tag_) {
+      case 0:
+        var var_addr = sse_decode_String(deserializer);
+        return LinkRoute_Direct(addr: var_addr);
+      case 1:
+        var var_url = sse_decode_String(deserializer);
+        return LinkRoute_Relay(url: var_url);
+      default:
+        throw UnimplementedError('');
+    }
   }
 
   @protected
@@ -1158,6 +1254,17 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_box_autoadd_fault_code(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  LinkPath? sse_decode_opt_box_autoadd_link_path(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_link_path(deserializer));
     } else {
       return null;
     }
@@ -1363,6 +1470,15 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   }
 
   @protected
+  void sse_encode_box_autoadd_link_path(
+    LinkPath self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_link_path(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_peer_addr(
     PeerAddr self,
     SseSerializer serializer,
@@ -1388,6 +1504,26 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_opt_box_autoadd_fault_code(self.fault, serializer);
     sse_encode_String(self.message, serializer);
+  }
+
+  @protected
+  void sse_encode_link_path(LinkPath self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_link_route(self.route, serializer);
+    sse_encode_u_32(self.rttMicros, serializer);
+  }
+
+  @protected
+  void sse_encode_link_route(LinkRoute self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    switch (self) {
+      case LinkRoute_Direct(addr: final addr):
+        sse_encode_i_32(0, serializer);
+        sse_encode_String(addr, serializer);
+      case LinkRoute_Relay(url: final url):
+        sse_encode_i_32(1, serializer);
+        sse_encode_String(url, serializer);
+    }
   }
 
   @protected
@@ -1431,6 +1567,19 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
     sse_encode_bool(self != null, serializer);
     if (self != null) {
       sse_encode_box_autoadd_fault_code(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_link_path(
+    LinkPath? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_link_path(self, serializer);
     }
   }
 
@@ -1523,6 +1672,13 @@ class LinkClientImpl extends RustOpaque implements LinkClient {
     method: method,
     argsCbor: argsCbor,
   );
+
+  /// The path requests use now: direct or through a relay. `None` in
+  /// process, or while the connection has no path selected. iroh moves a
+  /// connection from a relay to a direct path once hole punching succeeds,
+  /// and back when the network changes, so ask again to follow it.
+  LinkPath? path() =>
+      KuriLinkLib.instance.api.crateApiLinkClientPath(that: this);
 }
 
 @sealed

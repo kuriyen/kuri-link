@@ -138,6 +138,29 @@ void main() {
     final remote = await pressAll(tester);
     await screenshot(tester, 'remote');
 
+    // The probe a field test runs: a call a second, logged with its path.
+    await tester.tap(find.byKey(const Key('measure')));
+    await waitFor(tester, find.textContaining(RegExp(r': [3-9] calls')));
+    await tester.tap(find.byKey(const Key('measure')));
+    await tester.pump();
+    final summary = tester.widget<Text>(find.byKey(const Key('summary'))).data!;
+    final logLine = find.textContaining('Log: ');
+    final logPath = tester
+        .widget<Text>(logLine)
+        .data!
+        .substring('Log: '.length);
+    final log = File(logPath).readAsLinesSync();
+    File(logPath).deleteSync();
+    debugPrint('probe summary:\n$summary');
+    expect(log.first, 'time,ok,rtt_ms,route,to,quic_rtt_ms,error');
+    expect(log.length, greaterThan(3));
+    expect(summary, contains('failed: 0'));
+    if (!scan && givenTicket.isEmpty) {
+      // On loopback the path is direct, to the server's own socket.
+      expect(summary, startsWith('direct: '));
+      expect(log[1].split(',')[3], 'direct');
+    }
+
     expect(local, {
       'echo': 'kuri-link',
       'add': '5',

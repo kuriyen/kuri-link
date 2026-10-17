@@ -255,11 +255,49 @@ pub struct LinkClient {
     inner: kuri_link::Client,
 }
 
+/// Which way a connection's data goes.
+#[derive(Debug, Clone)]
+pub enum LinkRoute {
+    /// Straight to the peer at this socket address, e.g. `"192.0.2.40:41234"`.
+    Direct { addr: String },
+    /// Through this relay, which forwards packets it cannot read.
+    Relay { url: String },
+}
+
+/// The path a remote client's requests use at one moment.
+#[derive(Debug, Clone)]
+pub struct LinkPath {
+    pub route: LinkRoute,
+    /// QUIC's current estimate of the round-trip time, in microseconds.
+    pub rtt_micros: u32,
+}
+
 impl LinkClient {
     /// `true` when the back end runs in this process.
     #[frb(sync)]
     pub fn is_local(&self) -> bool {
         self.inner.peer().is_none()
+    }
+
+    /// The path requests use now: direct or through a relay. `None` in
+    /// process, or while the connection has no path selected. iroh moves a
+    /// connection from a relay to a direct path once hole punching succeeds,
+    /// and back when the network changes, so ask again to follow it.
+    #[frb(sync)]
+    pub fn path(&self) -> Option<LinkPath> {
+        let path = self.inner.path()?;
+        let route = match path.route {
+            kuri_link::Route::Direct(addr) => LinkRoute::Direct {
+                addr: addr.to_string(),
+            },
+            kuri_link::Route::Relay(url) => LinkRoute::Relay {
+                url: url.to_string(),
+            },
+        };
+        Some(LinkPath {
+            route,
+            rtt_micros: path.rtt.as_micros().try_into().unwrap_or(u32::MAX),
+        })
     }
 
     /// Calls `method` with CBOR-encoded `args`; returns the CBOR-encoded result.
