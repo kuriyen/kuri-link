@@ -3,19 +3,24 @@
 //! redeem one until it is stopped.
 //!
 //! ```text
-//! kuri-link-echo-server [--bind ADDR] [--peers FILE] [--key FILE]
+//! kuri-link-echo-server [--bind ADDR] [--peers FILE] [--key FILE] [--relay URL]...
 //! ```
 //!
 //! `--bind` defaults to every interface on a random port, and the ticket then
 //! lists the addresses of those interfaces. `--peers` keeps the paired devices
 //! across restarts, and `--key` keeps the server's own key, so a front end
 //! paired once still finds it.
+//!
+//! `--relay` names a relay you run, such as `iroh-relay`; repeat it for more
+//! than one. The server stays reachable through it, and the ticket names it,
+//! so a front end on another network (a phone on mobile data) can reach the
+//! server when no direct path exists. Without `--relay`, direct paths only.
 
 use std::io::IsTerminal;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use kuri_link::{Node, Pairing, PeerSet, Relays};
+use kuri_link::{Node, Pairing, PeerSet, RelayUrl, Relays};
 use qrcode::render::unicode::Dense1x2;
 use qrcode::QrCode;
 
@@ -33,6 +38,7 @@ async fn run() -> Result<(), String> {
     let mut bind: SocketAddr = ([0, 0, 0, 0], 0).into();
     let mut peers = PeerSet::new();
     let mut key = None;
+    let mut relays: Vec<RelayUrl> = Vec::new();
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
         let mut value = || args.next().ok_or(format!("{flag} needs a value"));
@@ -46,13 +52,18 @@ async fn run() -> Result<(), String> {
                         .map_err(|e| format!("--key: {e}"))?,
                 );
             }
+            "--relay" => relays.push(value()?.parse().map_err(|e| format!("--relay: {e}"))?),
             other => return Err(format!("unknown argument {other}")),
         }
     }
 
     let pairing = Pairing::new(peers);
     let mut builder = Node::builder()
-        .relays(Relays::None)
+        .relays(if relays.is_empty() {
+            Relays::None
+        } else {
+            Relays::Custom(relays.clone())
+        })
         .bind_addr(bind)
         .pairing(pairing.clone())
         .serve(kuri_link_echo::APP, kuri_link_echo::methods());
@@ -67,9 +78,14 @@ async fn run() -> Result<(), String> {
     if addr.addrs.is_empty() {
         addr = node.addr();
     }
-    if addr.addrs.is_empty() {
+    // The relays go in as given: the connection to them may not be up yet, and
+    // until it is, iroh does not list them.
+    for relay in relays {
+        addr = addr.with_relay(relay);
+    }
+    if addr.addrs.is_empty() && addr.relays.is_empty() {
         return Err(format!(
-            "no address to put in the ticket for {bind}; pass --bind with this host's address"
+            "no address to put in the ticket for {bind}; pass --bind with this host's address, or --relay"
         ));
     }
 

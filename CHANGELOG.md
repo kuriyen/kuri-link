@@ -29,6 +29,9 @@ depend on a tag.
 - Pairing by QR code: `kuri-link-echo-server` draws its ticket as a QR code
   on a terminal, and the app on a phone scans it, decoding on the device with
   zxing-cpp and sending nothing to a third party.
+- `kuri-link-echo-server --relay URL` keeps the server reachable through a
+  relay you run, such as `iroh-relay`, and names it in the ticket, so a front
+  end on another network can reach the server when no direct path exists.
 
 ## 0.1.0 — 2026-10-16
 
