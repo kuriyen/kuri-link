@@ -6,7 +6,8 @@
 //     flutter run -d linux --dart-entrypoint-args=--backend=remote
 //     flutter run -d <android device>
 //
-// For a remote back end, start one first and paste the ticket it prints:
+// For a remote back end, start one first, then paste the ticket it prints or,
+// on a phone, scan the QR code it draws:
 //
 //     cargo run -p kuri-link-echo --bin kuri-link-echo-server
 
@@ -18,6 +19,7 @@ import 'dart:typed_data';
 import 'package:cbor/cbor.dart';
 import 'package:flutter/material.dart';
 import 'package:kuri_link/kuri_link.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:path_provider/path_provider.dart';
 
 const app = 'echo';
@@ -126,6 +128,16 @@ class _EchoAppState extends State<EchoApp> {
     client = backend == null
         ? null
         : widget.node.openApp(app: app, backend: backend, credential: null);
+  }
+
+  /// Fills in the ticket from the back end's QR code, then pairs.
+  Future<void> scan(BuildContext context) async {
+    final scanned = await Navigator.of(
+      context,
+    ).push(MaterialPageRoute<String>(builder: (_) => const ScanPage()));
+    if (scanned == null) return;
+    ticket.text = scanned;
+    await pair();
   }
 
   Future<void> pair() async {
@@ -244,8 +256,58 @@ class _EchoAppState extends State<EchoApp> {
           ),
         ),
         const SizedBox(width: 8),
+        // Phones have a camera to read the back end's QR code with.
+        if (Platform.isAndroid || Platform.isIOS)
+          Builder(
+            builder: (context) => IconButton(
+              key: const Key('scan'),
+              tooltip: 'Scan the QR code',
+              icon: const Icon(Icons.qr_code_scanner),
+              onPressed: () => scan(context),
+            ),
+          ),
         FilledButton(onPressed: pair, child: const Text('Pair')),
       ],
+    );
+  }
+}
+
+/// The camera, until it sees a Kuri Link ticket's QR code; then returns the
+/// ticket's text. Other QR codes are ignored.
+class ScanPage extends StatefulWidget {
+  const ScanPage({super.key});
+
+  @override
+  State<ScanPage> createState() => _ScanPageState();
+}
+
+class _ScanPageState extends State<ScanPage> {
+  final camera = MobileScannerController(formats: [BarcodeFormat.qrCode]);
+  bool done = false;
+
+  void detected(BarcodeCapture capture) {
+    if (done) return;
+    for (final code in capture.barcodes) {
+      final text = code.rawValue;
+      if (text != null && text.toUpperCase().startsWith('KURI-LINK:')) {
+        done = true;
+        Navigator.of(context).pop(text);
+        return;
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    camera.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Scan the back end\'s QR code')),
+      body: MobileScanner(controller: camera, onDetect: detected),
     );
   }
 }

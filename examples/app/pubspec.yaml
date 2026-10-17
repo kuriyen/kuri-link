@@ -12,6 +12,7 @@ dependencies:
     sdk: flutter
   kuri_link:
     path: ../../dart
+  mobile_scanner: ^7.4.2
   path_provider: ^2.1.6
 
 dev_dependencies:

@@ -1,5 +1,6 @@
-//! The `echo` back end on its own. Prints a pairing ticket, then serves the
-//! devices that redeem one until it is stopped.
+//! The `echo` back end on its own. Prints a pairing ticket, and on a terminal
+//! draws it as a QR code for a phone to scan, then serves the devices that
+//! redeem one until it is stopped.
 //!
 //! ```text
 //! kuri-link-echo-server [--bind ADDR] [--peers FILE] [--key FILE]
@@ -10,10 +11,13 @@
 //! across restarts, and `--key` keeps the server's own key, so a front end
 //! paired once still finds it.
 
+use std::io::IsTerminal;
 use std::net::SocketAddr;
 use std::time::Duration;
 
 use kuri_link::{Node, Pairing, PeerSet, Relays};
+use qrcode::render::unicode::Dense1x2;
+use qrcode::QrCode;
 
 const TICKET_TTL: Duration = Duration::from_secs(10 * 60);
 
@@ -70,7 +74,11 @@ async fn run() -> Result<(), String> {
     }
 
     // One line, so a script or a test can read it.
-    println!("{}", pairing.issue(addr, TICKET_TTL));
+    let ticket = pairing.issue(addr, TICKET_TTL).to_string();
+    println!("{ticket}");
+    if std::io::stderr().is_terminal() {
+        eprintln!("{}", qr(&ticket));
+    }
     eprintln!(
         "serving {} as {}; the ticket above pairs one device and expires in {} minutes",
         kuri_link_echo::APP,
@@ -79,4 +87,20 @@ async fn run() -> Result<(), String> {
     );
     std::future::pending::<()>().await;
     Ok(())
+}
+
+/// `text` as a QR code in half-height blocks, two modules to a character,
+/// drawn black on white whatever the terminal's own colours are, so a camera
+/// reads it the right way round.
+fn qr(text: &str) -> String {
+    let code = match QrCode::new(text) {
+        Ok(code) => code,
+        Err(e) => return format!("(no QR code: {e})"),
+    };
+    code.render::<Dense1x2>()
+        .quiet_zone(true)
+        .build()
+        .lines()
+        .map(|line| format!("\x1b[30;107m{line}\x1b[0m\n"))
+        .collect()
 }

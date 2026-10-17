@@ -17,4 +17,6 @@ crate-type = ["lib", "cdylib"]
 [dependencies]
 kuri-link = { path = "../../crates/kuri-link" }
 kuri-link-ffi = { path = "../../crates/kuri-link-ffi" }
+# The server draws its ticket as a QR code on the terminal.
+qrcode = { version = "0.14", default-features = false }
 tokio.workspace = true

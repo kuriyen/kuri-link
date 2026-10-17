@@ -42,6 +42,14 @@ For a remote back end, run the server where the phone can reach it, without
 `--bind`, so its ticket lists the host's addresses; the emulator reaches its
 host's addresses through its own network.
 
+## Pair by QR code
+
+On a terminal, the server draws its ticket as a QR code below the line of
+text. On a phone, choose **Remote**, press the scan button next to **Pair**, and
+point the camera at the code. The app takes the first Kuri Link ticket it sees
+and ignores any other QR code. The Linux app has no scan button; paste the
+ticket there.
+
 ## Where the app keeps things
 
 The device key and the paired address live in the app's support directory:
@@ -72,3 +80,19 @@ flutter test integration_test -d <device> --dart-define=KURI_LINK_TICKET=$(head 
 
 On the emulator this pairs over the emulator's network with the server on its
 host; a stopped server makes the test fail.
+
+With `KURI_LINK_SCAN=true` the test pairs by pressing the scan button instead,
+so the camera has to find the server's QR code. On the emulator, start it with
+`-camera-back virtualscene`, put a picture of the code on the virtual room's
+wall, walk the camera to it, and grant the camera permission as soon as the
+test installs the app:
+
+```sh
+qrencode -s 10 -o ticket.png "$(head -1 ticket)"
+adb emu virtualscene-image wall "$PWD/ticket.png"
+adb emu automation play "$ANDROID_HOME/emulator/resources/macros/Walk_to_image_room"
+until adb shell pm grant io.github.kuriyen.kuri_link_example android.permission.CAMERA 2>/dev/null; do sleep 1; done &
+flutter test integration_test -d <emulator> --dart-define=KURI_LINK_SCAN=true
+```
+
+With the default picture on the wall instead, the test fails.

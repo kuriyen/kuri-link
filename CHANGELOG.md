@@ -26,6 +26,8 @@ depend on a tag.
 - `examples/desktop` is now `examples/app`, and runs on Android as well as
   Linux. Its Gradle build runs Cargo through cargo-ndk for arm64-v8a and
   x86_64, as its CMake build does on Linux.
+- Pairing by QR code: `kuri-link-echo-server` draws its ticket as a QR code
+  on a terminal, and the app on a phone scans it.
 
 ## 0.1.0 — 2026-10-16
 

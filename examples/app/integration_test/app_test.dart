@@ -11,9 +11,11 @@
 // screenshot of each back end's answers in.
 //
 // A phone or emulator cannot start a process on the host, so there the server
-// runs first and its ticket comes in as a define; see README.md:
+// runs first and its ticket comes in as a define, or, with KURI_LINK_SCAN, the
+// app scans the QR code the server draws; see README.md:
 //
 //     flutter test integration_test -d <device> --dart-define=KURI_LINK_TICKET=...
+//     flutter test integration_test -d <device> --dart-define=KURI_LINK_SCAN=true
 
 import 'dart:convert';
 import 'dart:io';
@@ -27,11 +29,16 @@ import 'package:kuri_link_example/main.dart';
 
 final target = Platform.environment['KURI_LINK_TARGET'] ?? '../../target/debug';
 const givenTicket = String.fromEnvironment('KURI_LINK_TICKET');
+const scan = bool.fromEnvironment('KURI_LINK_SCAN');
 
 /// Pumps frames until `finder` finds something. Calls cross into Rust and
 /// back, so real time has to pass, not just fake time.
-Future<void> waitFor(WidgetTester tester, Finder finder) async {
-  for (var i = 0; i < 100; i++) {
+Future<void> waitFor(
+  WidgetTester tester,
+  Finder finder, {
+  int seconds = 10,
+}) async {
+  for (var i = 0; i < seconds * 10; i++) {
     await tester.pump();
     if (finder.evaluate().isNotEmpty) return;
     await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -90,7 +97,9 @@ void main() {
   ) async {
     final dir = await Directory.systemTemp.createTemp('kuri-link-example-');
     addTearDown(() => dir.delete(recursive: true));
-    final ticket = givenTicket.isNotEmpty ? givenTicket : await startServer();
+    final ticket = scan || givenTicket.isNotEmpty
+        ? givenTicket
+        : await startServer();
 
     final node = await startLink(dir.path);
     await tester.pumpWidget(
@@ -103,9 +112,19 @@ void main() {
 
     await tester.tap(find.text('Remote'));
     await waitFor(tester, find.byKey(const Key('ticket')));
-    await tester.enterText(find.byKey(const Key('ticket')), ticket);
-    await tester.tap(find.widgetWithText(FilledButton, 'Pair'));
-    await waitFor(tester, find.text('Back end: remote, over iroh'));
+    if (scan) {
+      // The camera has to start and find the code: give it longer.
+      await tester.tap(find.byKey(const Key('scan')));
+      await waitFor(
+        tester,
+        find.text('Back end: remote, over iroh'),
+        seconds: 60,
+      );
+    } else {
+      await tester.enterText(find.byKey(const Key('ticket')), ticket);
+      await tester.tap(find.widgetWithText(FilledButton, 'Pair'));
+      await waitFor(tester, find.text('Back end: remote, over iroh'));
+    }
     final remote = await pressAll(tester);
     await screenshot(tester, 'remote');
 
