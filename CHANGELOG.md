@@ -27,10 +27,11 @@ The first tagged release.
 
 - `Node` and `NodeBuilder`: an iroh endpoint that serves apps by name. The key
   comes from a file (`load_or_create_key`). Relays are off unless named
-  (`Relays`). Every request passes an `Authorizer`, by default `DenyAll`.
-  Optional `Waker` and frame limit.
+  (`Relays`). Every request passes an `Authorizer`: by default `DenyAll`, or,
+  with pairing, the devices paired so far. Optional `Waker` and frame limit.
 - `Client`: `call`, `call_typed` and `open`, alike for a back end on another
-  device and one in this process (`Client::in_process`, `register_local`).
+  device and one in this process: `Client::in_process` for a service in hand,
+  or `Client::local` for one registered with `register_local`.
 - `Methods`: `unary`, `typed` and `duplex` methods.
 - Pairing: `Pairing` issues one-time, short-lived `Ticket`s as text for a QR
   code, `Node::pair` redeems one, and `PeerSet` is the paired set: shared,

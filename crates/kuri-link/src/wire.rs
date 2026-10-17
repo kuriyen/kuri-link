@@ -139,5 +139,62 @@ pub(crate) async fn read_frame<T: DeserializeOwned>(
     recv.read_exact(&mut buf)
         .await
         .map_err(|e| WireError::Stream(e.to_string()))?;
-    ciborium::from_reader(&buf[..]).map_err(|e| WireError::Decode(e.to_string()))
+    decode(&buf)
+}
+
+/// One frame's CBOR, decoded as every frame read off the wire is.
+fn decode<T: DeserializeOwned>(buf: &[u8]) -> Result<T, WireError> {
+    ciborium::from_reader(buf).map_err(|e| WireError::Decode(e.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn map(entries: Vec<(&str, Value)>) -> Value {
+        Value::Map(
+            entries
+                .into_iter()
+                .map(|(k, v)| (Value::Text(k.into()), v))
+                .collect(),
+        )
+    }
+
+    fn text(s: &str) -> Value {
+        Value::Text(s.into())
+    }
+
+    fn frame(value: Value) -> Vec<u8> {
+        let mut buf = Vec::new();
+        ciborium::into_writer(&value, &mut buf).unwrap();
+        buf
+    }
+
+    // Version 1 promises that a peer from a later release can add optional
+    // keys and fault codes, and that this one reads past them. Rejecting
+    // unknown keys, or decoding by hand, would break that silently.
+    #[test]
+    fn a_newer_peers_keys_and_fault_codes_still_read() {
+        let header: Header = decode(&frame(map(vec![
+            ("v", Value::Integer(1.into())),
+            ("op", text("call")),
+            ("method", text("add")),
+            ("args", Value::Null),
+            ("priority", map(vec![])),
+        ])))
+        .unwrap();
+        assert_eq!((header.v, header.op), (1, Op::Call));
+        assert_eq!(header.method, "add");
+
+        let fault = map(vec![
+            ("code", text("rate_limited")),
+            ("message", text("slow down")),
+            ("retry_after", Value::Integer(5.into())),
+        ]);
+        let reply: Reply = decode(&frame(map(vec![("err", fault)]))).unwrap();
+        let Reply::Err(fault) = reply else {
+            panic!("expected an error reply, got {reply:?}");
+        };
+        assert_eq!(fault, Fault::new(FaultCode::Unknown, "slow down"));
+    }
 }
