@@ -18,8 +18,8 @@ import 'dart:typed_data';
 
 import 'package:cbor/cbor.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_zxing/flutter_zxing.dart';
 import 'package:kuri_link/kuri_link.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:path_provider/path_provider.dart';
 
 const app = 'echo';
@@ -274,6 +274,10 @@ class _EchoAppState extends State<EchoApp> {
 
 /// The camera, until it sees a Kuri Link ticket's QR code; then returns the
 /// ticket's text. Other QR codes are ignored.
+///
+/// The decoder is zxing-cpp, on the device, with nothing sent anywhere. The
+/// common alternative on Android, ML Kit, reports usage to Google, and this
+/// example is meant to show an app that talks to its own back end only.
 class ScanPage extends StatefulWidget {
   const ScanPage({super.key});
 
@@ -282,32 +286,29 @@ class ScanPage extends StatefulWidget {
 }
 
 class _ScanPageState extends State<ScanPage> {
-  final camera = MobileScannerController(formats: [BarcodeFormat.qrCode]);
   bool done = false;
 
-  void detected(BarcodeCapture capture) {
-    if (done) return;
-    for (final code in capture.barcodes) {
-      final text = code.rawValue;
-      if (text != null && text.toUpperCase().startsWith('KURI-LINK:')) {
-        done = true;
-        Navigator.of(context).pop(text);
-        return;
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    camera.dispose();
-    super.dispose();
+  void scanned(Code code) {
+    final text = code.text;
+    if (done || !code.isValid || text == null) return;
+    if (!text.toUpperCase().startsWith('KURI-LINK:')) return;
+    done = true;
+    Navigator.of(context).pop(text);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Scan the back end\'s QR code')),
-      body: MobileScanner(controller: camera, onDetect: detected),
+      body: ReaderWidget(
+        codeFormat: Format.qrCode,
+        onScan: scanned,
+        // The whole frame, so the code need not be lined up in a box.
+        cropPercent: 1,
+        showScannerOverlay: false,
+        showGallery: false,
+        showToggleCamera: false,
+      ),
     );
   }
 }

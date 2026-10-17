@@ -50,6 +50,13 @@ point the camera at the code. The app takes the first Kuri Link ticket it sees
 and ignores any other QR code. The Linux app has no scan button; paste the
 ticket there.
 
+The code is decoded on the phone by zxing-cpp (the `flutter_zxing` package),
+and nothing is sent anywhere else. ML Kit, the usual decoder on Android,
+reports usage to Google, and this app is meant to talk to its own back end
+only. For the same reason the app asks only for the network and the camera,
+not for the microphone or storage that its camera and gallery plugins would
+otherwise request.
+
 ## Where the app keeps things
 
 The device key and the paired address live in the app's support directory:

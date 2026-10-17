@@ -27,7 +27,8 @@ depend on a tag.
   Linux. Its Gradle build runs Cargo through cargo-ndk for arm64-v8a and
   x86_64, as its CMake build does on Linux.
 - Pairing by QR code: `kuri-link-echo-server` draws its ticket as a QR code
-  on a terminal, and the app on a phone scans it.
+  on a terminal, and the app on a phone scans it, decoding on the device with
+  zxing-cpp and sending nothing to a third party.
 
 ## 0.1.0 — 2026-10-16
 
