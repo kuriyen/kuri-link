@@ -1683,7 +1683,7 @@ dependencies = [
 
 [[package]]
 name = "kuri-link"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "ciborium",
  "data-encoding",
@@ -1698,7 +1698,7 @@ dependencies = [
 
 [[package]]
 name = "kuri-link-echo"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "kuri-link",
  "kuri-link-ffi",
@@ -1707,7 +1707,7 @@ dependencies = [
 
 [[package]]
 name = "kuri-link-ffi"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "ciborium",
  "flutter_rust_bridge",
