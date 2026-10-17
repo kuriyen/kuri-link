@@ -66,7 +66,7 @@ class KuriLinkLib
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 1848226904;
+  int get rustContentHash => -1021453157;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -113,6 +113,10 @@ abstract class KuriLinkLibApi extends BaseApi {
     required String ticket,
   });
 
+  List<String> crateApiLinkNodeRelays({required LinkNode that});
+
+  Future<void> crateApiLinkNodeShutdown({required LinkNode that});
+
   Future<LinkNode> crateApiLinkNodeStart({
     required String keyPath,
     required List<String> relays,
@@ -133,6 +137,8 @@ abstract class KuriLinkLibApi extends BaseApi {
   });
 
   Future<LinkClient> crateApiOpenLocal({required String app});
+
+  PeerAddr crateApiTicketBackEnd({required String ticket});
 
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_LinkClient;
@@ -421,6 +427,63 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   );
 
   @override
+  List<String> crateApiLinkNodeRelays({required LinkNode that}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLinkNode(
+            that,
+            serializer,
+          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 8)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_String,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiLinkNodeRelaysConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLinkNodeRelaysConstMeta =>
+      const TaskConstMeta(debugName: "LinkNode_relays", argNames: ["that"]);
+
+  @override
+  Future<void> crateApiLinkNodeShutdown({required LinkNode that}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLinkNode(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 9,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiLinkNodeShutdownConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLinkNodeShutdownConstMeta =>
+      const TaskConstMeta(debugName: "LinkNode_shutdown", argNames: ["that"]);
+
+  @override
   Future<LinkNode> crateApiLinkNodeStart({
     required String keyPath,
     required List<String> relays,
@@ -434,7 +497,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 10,
             port: port_,
           );
         },
@@ -468,7 +531,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 11,
             port: port_,
           );
         },
@@ -503,7 +566,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 12,
             port: port_,
           );
         },
@@ -536,7 +599,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 13,
             port: port_,
           );
         },
@@ -574,7 +637,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 14,
             port: port_,
           );
         },
@@ -604,7 +667,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 15,
             port: port_,
           );
         },
@@ -622,6 +685,29 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
 
   TaskConstMeta get kCrateApiOpenLocalConstMeta =>
       const TaskConstMeta(debugName: "open_local", argNames: ["app"]);
+
+  @override
+  PeerAddr crateApiTicketBackEnd({required String ticket}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(ticket, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 16)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_peer_addr,
+          decodeErrorData: sse_decode_link_error,
+        ),
+        constMeta: kCrateApiTicketBackEndConstMeta,
+        argValues: [ticket],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiTicketBackEndConstMeta =>
+      const TaskConstMeta(debugName: "ticket_back_end", argNames: ["ticket"]);
 
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_LinkClient => wire
@@ -1489,6 +1575,15 @@ class LinkNodeImpl extends RustOpaque implements LinkNode {
   /// `Backend::Remote` from then on. A ticket admits one device.
   Future<PeerAddr> pair({required String ticket}) =>
       KuriLinkLib.instance.api.crateApiLinkNodePair(that: this, ticket: ticket);
+
+  /// The relays this node started with, in the form a `PeerAddr` lists them.
+  List<String> relays() =>
+      KuriLinkLib.instance.api.crateApiLinkNodeRelays(that: this);
+
+  /// Closes the node. Its key stays in its file, so a node started again
+  /// from that file is the same device to every back end it paired with.
+  Future<void> shutdown() =>
+      KuriLinkLib.instance.api.crateApiLinkNodeShutdown(that: this);
 }
 
 @sealed

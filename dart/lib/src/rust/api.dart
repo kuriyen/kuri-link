@@ -11,6 +11,12 @@ part 'api.freezed.dart';
 // These functions are ignored because they are not marked as `pub`: `decode_args`, `from_core`, `new`, `other`, `parse`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`
 
+/// The back end a pairing ticket names, read without redeeming the ticket.
+/// An app starts its node with the relays listed here before it pairs, so the
+/// node can reach a back end that is only reachable through them.
+PeerAddr ticketBackEnd({required String ticket}) =>
+    KuriLinkLib.instance.api.crateApiTicketBackEnd(ticket: ticket);
+
 /// Opens the in-process back end registered as `app`.
 Future<LinkClient> openLocal({required String app}) =>
     KuriLinkLib.instance.api.crateApiOpenLocal(app: app);
@@ -55,8 +61,17 @@ abstract class LinkNode implements RustOpaqueInterface {
   /// `Backend::Remote` from then on. A ticket admits one device.
   Future<PeerAddr> pair({required String ticket});
 
+  /// The relays this node started with, in the form a `PeerAddr` lists them.
+  List<String> relays();
+
+  /// Closes the node. Its key stays in its file, so a node started again
+  /// from that file is the same device to every back end it paired with.
+  Future<void> shutdown();
+
   /// Starts a node whose identity lives in the file at `key_path`.
-  /// `relays` empty means direct paths only.
+  /// `relays` empty means direct paths only. A node uses only the relays it
+  /// started with, so to reach a back end through its relays, start the node
+  /// with them: see `ticket_back_end`.
   static Future<LinkNode> start({
     required String keyPath,
     required List<String> relays,

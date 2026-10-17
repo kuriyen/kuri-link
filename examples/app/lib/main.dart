@@ -10,6 +10,10 @@
 // on a phone, scan the QR code it draws:
 //
 //     cargo run -p kuri-link-echo --bin kuri-link-echo-server
+//
+// A back end started with --relay names its relays in the ticket, and the app
+// starts its node with them, so it can reach the back end from another
+// network.
 
 import 'dart:convert';
 import 'dart:ffi';
@@ -27,11 +31,13 @@ const app = 'echo';
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   final dir = await dataDir();
-  final node = await startLink(dir);
+  final store = PeerStore('$dir/back-end.json');
+  final node = await startLink(dir, relays: store.load()?.relays ?? const []);
   runApp(
     EchoApp(
       node: node,
-      store: PeerStore('$dir/back-end.json'),
+      store: store,
+      dataDir: dir,
       remote: args.contains('--backend=remote'),
     ),
   );
@@ -41,6 +47,10 @@ Future<void> main(List<String> args) async {
 /// directory, `~/.local/share/io.github.kuriyen.kuri_link_example` on Linux.
 Future<String> dataDir() async => (await getApplicationSupportDirectory()).path;
 
+/// The device key: the same device to every back end, whichever relays the
+/// node uses.
+String keyPath(String dataDir) => '$dataDir/device.key';
+
 /// The app's one native library. On Linux it is bundled next to the
 /// executable; on Android it is in the APK, where the loader finds it by name.
 String nativeLibrary() => Platform.isAndroid
@@ -49,15 +59,18 @@ String nativeLibrary() => Platform.isAndroid
 
 /// Loads the app's one native library, which holds both the Kuri Link bindings
 /// and the echo back end, registers that back end, and starts this device's
-/// node.
-Future<LinkNode> startLink(String dataDir) async {
+/// node with `relays`: those of the paired back end, if any.
+Future<LinkNode> startLink(
+  String dataDir, {
+  List<String> relays = const [],
+}) async {
   final library = nativeLibrary();
   await KuriLinkLib.init(externalLibrary: ExternalLibrary.open(library));
   DynamicLibrary.open(library).lookupFunction<Void Function(), void Function()>(
     'kuri_link_echo_register',
   )();
   await Directory(dataDir).create(recursive: true);
-  return LinkNode.start(keyPath: '$dataDir/device.key', relays: []);
+  return LinkNode.start(keyPath: keyPath(dataDir), relays: relays);
 }
 
 /// The paired back end's address, kept across launches.
@@ -94,11 +107,13 @@ class EchoApp extends StatefulWidget {
     super.key,
     required this.node,
     required this.store,
+    required this.dataDir,
     this.remote = false,
   });
 
   final LinkNode node;
   final PeerStore store;
+  final String dataDir;
   final bool remote;
 
   @override
@@ -106,6 +121,7 @@ class EchoApp extends StatefulWidget {
 }
 
 class _EchoAppState extends State<EchoApp> {
+  late LinkNode node = widget.node;
   late bool remote = widget.remote;
   late PeerAddr? peer = widget.store.load();
   Future<LinkClient>? client;
@@ -127,7 +143,7 @@ class _EchoAppState extends State<EchoApp> {
         : Backend.remote(peer: peer!);
     client = backend == null
         ? null
-        : widget.node.openApp(app: app, backend: backend, credential: null);
+        : node.openApp(app: app, backend: backend, credential: null);
   }
 
   /// Fills in the ticket from the back end's QR code, then pairs.
@@ -142,7 +158,9 @@ class _EchoAppState extends State<EchoApp> {
 
   Future<void> pair() async {
     try {
-      final paired = await widget.node.pair(ticket: ticket.text.trim());
+      final text = ticket.text.trim();
+      await useRelaysOf(ticketBackEnd(ticket: text));
+      final paired = await node.pair(ticket: text);
       widget.store.save(paired);
       setState(() {
         peer = paired;
@@ -153,6 +171,20 @@ class _EchoAppState extends State<EchoApp> {
     } on LinkError catch (e) {
       setState(() => pairError = e.toString());
     }
+  }
+
+  /// A node uses only the relays it started with, so a back end that names
+  /// others gets a new node. The key is the same, so it is the same device.
+  Future<void> useRelaysOf(PeerAddr backEnd) async {
+    final have = node.relays().toSet();
+    final want = backEnd.relays.toSet();
+    if (have.length == want.length && have.containsAll(want)) return;
+    final old = node;
+    node = await LinkNode.start(
+      keyPath: keyPath(widget.dataDir),
+      relays: backEnd.relays,
+    );
+    await old.shutdown();
   }
 
   void forget() {
@@ -235,7 +267,7 @@ class _EchoAppState extends State<EchoApp> {
           Expanded(
             child: Text(
               'Paired with ${paired.id.substring(0, 10)}, '
-              'at ${paired.addrs.join(', ')}',
+              'at ${[...paired.addrs, ...paired.relays].join(', ')}',
             ),
           ),
           TextButton(onPressed: forget, child: const Text('Forget')),

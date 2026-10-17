@@ -28,6 +28,7 @@ import 'package:integration_test/integration_test.dart';
 import 'package:kuri_link_example/main.dart';
 
 final target = Platform.environment['KURI_LINK_TARGET'] ?? '../../target/debug';
+const absentRelay = 'http://127.0.0.1:9/';
 const givenTicket = String.fromEnvironment('KURI_LINK_TICKET');
 const scan = bool.fromEnvironment('KURI_LINK_SCAN');
 
@@ -73,10 +74,14 @@ Future<Map<String, String>> pressAll(WidgetTester tester) async {
 }
 
 /// Starts an echo server on loopback for this test and returns its ticket.
+/// The server names a relay that is not there: the app must still start its
+/// node with it, and still reach the server directly.
 Future<String> startServer() async {
   final server = await Process.start('$target/kuri-link-echo-server', [
     '--bind',
     '127.0.0.1:0',
+    '--relay',
+    absentRelay,
   ]);
   server.stderr.drain<void>();
   addTearDown(() async {
@@ -102,8 +107,13 @@ void main() {
         : await startServer();
 
     final node = await startLink(dir.path);
+    final id = node.id();
     await tester.pumpWidget(
-      EchoApp(node: node, store: PeerStore('${dir.path}/back-end.json')),
+      EchoApp(
+        node: node,
+        store: PeerStore('${dir.path}/back-end.json'),
+        dataDir: dir.path,
+      ),
     );
 
     await waitFor(tester, find.text('Back end: in this process'));
@@ -135,6 +145,11 @@ void main() {
       'upper (stream)': 'KURI-LINK',
     });
     // Only the caller differs: remotely, the key the handshake proved.
-    expect(remote, {...local, 'whoami': node.id()});
+    expect(remote, {...local, 'whoami': id});
+    if (!scan && givenTicket.isEmpty) {
+      // Pairing with a back end that names a relay replaced the node it was
+      // given with one started with that relay, from the same key file.
+      expect(() => node.id(), throwsA(anything));
+    }
   });
 }

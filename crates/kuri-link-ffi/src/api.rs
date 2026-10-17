@@ -142,31 +142,46 @@ impl From<kuri_link::FaultCode> for FaultCode {
 /// This device's node. One per app process is enough.
 pub struct LinkNode {
     inner: Node,
+    relays: Vec<String>,
 }
 
 impl LinkNode {
     /// Starts a node whose identity lives in the file at `key_path`.
-    /// `relays` empty means direct paths only.
+    /// `relays` empty means direct paths only. A node uses only the relays it
+    /// started with, so to reach a back end through its relays, start the node
+    /// with them: see `ticket_back_end`.
     pub async fn start(key_path: String, relays: Vec<String>) -> Result<LinkNode, LinkError> {
         let key = kuri_link::load_or_create_key(&PathBuf::from(&key_path))
             .map_err(|e| LinkError::new(format!("key file {key_path}: {e}")))?;
-        let relays = if relays.is_empty() {
+        let urls = relays
+            .iter()
+            .map(|r| RelayUrl::from_str(r).map_err(LinkError::other))
+            .collect::<Result<Vec<_>, _>>()?;
+        let relays = urls.iter().map(|u| u.to_string()).collect();
+        let mode = if urls.is_empty() {
             Relays::None
         } else {
-            Relays::Custom(
-                relays
-                    .iter()
-                    .map(|r| RelayUrl::from_str(r).map_err(LinkError::other))
-                    .collect::<Result<_, _>>()?,
-            )
+            Relays::Custom(urls)
         };
         let inner = Node::builder()
             .secret_key(key)
-            .relays(relays)
+            .relays(mode)
             .bind()
             .await
             .map_err(LinkError::other)?;
-        Ok(LinkNode { inner })
+        Ok(LinkNode { inner, relays })
+    }
+
+    /// The relays this node started with, in the form a `PeerAddr` lists them.
+    #[frb(sync)]
+    pub fn relays(&self) -> Vec<String> {
+        self.relays.clone()
+    }
+
+    /// Closes the node. Its key stays in its file, so a node started again
+    /// from that file is the same device to every back end it paired with.
+    pub async fn shutdown(self) {
+        self.inner.shutdown().await;
     }
 
     /// This device's public key: how a back end knows it once paired.
@@ -217,6 +232,15 @@ impl LinkNode {
         }
         Ok(LinkClient { inner: client })
     }
+}
+
+/// The back end a pairing ticket names, read without redeeming the ticket.
+/// An app starts its node with the relays listed here before it pairs, so the
+/// node can reach a back end that is only reachable through them.
+#[frb(sync)]
+pub fn ticket_back_end(ticket: String) -> Result<PeerAddr, LinkError> {
+    let ticket = Ticket::from_str(&ticket).map_err(LinkError::other)?;
+    Ok(PeerAddr::from_core(&ticket.addr))
 }
 
 /// Opens the in-process back end registered as `app`.

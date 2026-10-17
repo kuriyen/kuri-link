@@ -32,6 +32,15 @@ depend on a tag.
 - `kuri-link-echo-server --relay URL` keeps the server reachable through a
   relay you run, such as `iroh-relay`, and names it in the ticket, so a front
   end on another network can reach the server when no direct path exists.
+- The app starts its node with the relays its back end names: from the ticket
+  when it pairs, from the stored address on later launches.
+
+### Dart package
+
+- `ticketBackEnd(ticket)` reads the back end a ticket names without redeeming
+  it, so an app can start its node with the back end's relays before pairing.
+- `LinkNode.relays()` lists the relays a node started with, and
+  `LinkNode.shutdown()` closes it.
 
 ## 0.1.0 — 2026-10-16
 

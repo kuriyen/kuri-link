@@ -40,7 +40,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1848226904;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1021453157;
 
 // Section: executor
 
@@ -449,6 +449,90 @@ fn wire__crate__api__LinkNode_pair_impl(
         },
     )
 }
+fn wire__crate__api__LinkNode_relays_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "LinkNode_relays",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<LinkNode>,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let mut api_that_guard = None;
+                let decode_indices_ =
+                    flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                        flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                            &api_that, 0, false,
+                        ),
+                    ]);
+                for i in decode_indices_ {
+                    match i {
+                        0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                        _ => unreachable!(),
+                    }
+                }
+                let api_that_guard = api_that_guard.unwrap();
+                let output_ok = Ok::<_, ()>(crate::api::LinkNode::relays(&*api_that_guard))?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__LinkNode_shutdown_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "LinkNode_shutdown",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <LinkNode>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, ()>(
+                    (move || async move {
+                        let output_ok = Ok::<_, ()>({
+                            crate::api::LinkNode::shutdown(api_that).await;
+                        })?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__LinkNode_start_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -745,6 +829,36 @@ fn wire__crate__api__open_local_impl(
         },
     )
 }
+fn wire__crate__api__ticket_back_end_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "ticket_back_end",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_ticket = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, crate::api::LinkError>((move || {
+                let output_ok = crate::api::ticket_back_end(api_ticket)?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
 
 // Section: related_funcs
 
@@ -989,12 +1103,13 @@ fn pde_ffi_dispatcher_primary_impl(
         4 => wire__crate__api__LinkNode_connect_impl(port, ptr, rust_vec_len, data_len),
         6 => wire__crate__api__LinkNode_open_app_impl(port, ptr, rust_vec_len, data_len),
         7 => wire__crate__api__LinkNode_pair_impl(port, ptr, rust_vec_len, data_len),
-        8 => wire__crate__api__LinkNode_start_impl(port, ptr, rust_vec_len, data_len),
-        9 => wire__crate__api__LinkStream_finish_impl(port, ptr, rust_vec_len, data_len),
-        10 => wire__crate__api__LinkStream_read_impl(port, ptr, rust_vec_len, data_len),
-        11 => wire__crate__api__LinkStream_read_to_end_impl(port, ptr, rust_vec_len, data_len),
-        12 => wire__crate__api__LinkStream_write_impl(port, ptr, rust_vec_len, data_len),
-        13 => wire__crate__api__open_local_impl(port, ptr, rust_vec_len, data_len),
+        9 => wire__crate__api__LinkNode_shutdown_impl(port, ptr, rust_vec_len, data_len),
+        10 => wire__crate__api__LinkNode_start_impl(port, ptr, rust_vec_len, data_len),
+        11 => wire__crate__api__LinkStream_finish_impl(port, ptr, rust_vec_len, data_len),
+        12 => wire__crate__api__LinkStream_read_impl(port, ptr, rust_vec_len, data_len),
+        13 => wire__crate__api__LinkStream_read_to_end_impl(port, ptr, rust_vec_len, data_len),
+        14 => wire__crate__api__LinkStream_write_impl(port, ptr, rust_vec_len, data_len),
+        15 => wire__crate__api__open_local_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1009,6 +1124,8 @@ fn pde_ffi_dispatcher_sync_impl(
     match func_id {
         2 => wire__crate__api__LinkClient_is_local_impl(ptr, rust_vec_len, data_len),
         5 => wire__crate__api__LinkNode_id_impl(ptr, rust_vec_len, data_len),
+        8 => wire__crate__api__LinkNode_relays_impl(ptr, rust_vec_len, data_len),
+        16 => wire__crate__api__ticket_back_end_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }

@@ -134,6 +134,53 @@ void main() {
     });
   }
 
+  test('a ticket names its back end before it is redeemed', () async {
+    final named = ticketBackEnd(ticket: ticket);
+    expect(named.id, backEnd.id);
+    expect(named.addrs, backEnd.addrs);
+    expect(named.relays, isEmpty);
+    expect(
+      () => ticketBackEnd(ticket: 'KURI-LINK:nonsense'),
+      throwsA(isA<LinkError>()),
+    );
+
+    final relayed = await Process.start(serverBinary, [
+      '--bind',
+      '127.0.0.1:0',
+      '--relay',
+      'http://127.0.0.1:9',
+    ]);
+    relayed.stderr.drain<void>();
+    final relayedTicket = await relayed.stdout
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .first;
+    relayed.kill();
+    await relayed.exitCode;
+    expect(ticketBackEnd(ticket: relayedTicket).relays, [
+      'http://127.0.0.1:9/',
+    ]);
+  });
+
+  test(
+    'a node shut down and started again with other relays is the same device',
+    () async {
+      final keyPath = '${dir.path}/restart.key';
+      final first = await LinkNode.start(
+        keyPath: keyPath,
+        relays: ['http://127.0.0.1:9'],
+      );
+      expect(first.relays(), ['http://127.0.0.1:9/']);
+      final id = first.id();
+      await first.shutdown();
+
+      final second = await LinkNode.start(keyPath: keyPath, relays: []);
+      expect(second.id(), id);
+      expect(second.relays(), isEmpty);
+      await second.shutdown();
+    },
+  );
+
   test('a ticket pairs one device', () async {
     final other = await LinkNode.start(
       keyPath: '${dir.path}/other.key',

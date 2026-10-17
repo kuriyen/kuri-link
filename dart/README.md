@@ -26,7 +26,13 @@ final sum = cbor.decode(await client.call(
 
 - `LinkNode.start(keyPath, relays)`: this device's identity and endpoint. The
   key file is created on first start and keeps the device the same across
-  launches. `relays` empty means direct paths only.
+  launches. `relays` empty means direct paths only. A node uses only the
+  relays it started with; `node.relays()` lists them.
+- `ticketBackEnd(ticket)`: the back end a ticket names, without redeeming it.
+  To reach a back end through its relays, start the node with
+  `ticketBackEnd(ticket).relays` before pairing.
+- `node.shutdown()`: closes the node. One started again from the same key file
+  is the same device, so an app can switch relays this way.
 - `node.id()`: this device's public key, by which a back end knows it once
   paired.
 - `node.pair(ticket)`: redeems a back end's pairing ticket and returns the back

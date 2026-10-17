@@ -57,6 +57,23 @@ only. For the same reason the app asks only for the network and the camera,
 not for the microphone or storage that its camera and gallery plugins would
 otherwise request.
 
+## Through a relay
+
+When the phone and the server are on different networks, such as the phone on
+mobile data, there may be no direct path between them. Run a relay where both
+can reach it, such as [`iroh-relay`](https://crates.io/crates/iroh-relay) on a
+host with a public address, and name it when starting the server:
+
+```sh
+cargo run -p kuri-link-echo --bin kuri-link-echo-server -- \
+    --relay https://relay.example.org --key server.key --peers paired-devices
+```
+
+The ticket names the relay, and the app starts its node with it before
+pairing; on later launches it uses the relays of the address it kept. The relay
+forwards encrypted packets and sees which keys talk to each other, never what
+they say.
+
 ## Where the app keeps things
 
 The device key and the paired address live in the app's support directory:
@@ -87,6 +104,18 @@ flutter test integration_test -d <device> --dart-define=KURI_LINK_TICKET=$(head 
 
 On the emulator this pairs over the emulator's network with the server on its
 host; a stopped server makes the test fail.
+
+To test the path through a relay, bind the server to the host's loopback,
+which the emulator cannot reach, and run a relay on an address it can, here
+`iroh-relay --dev` on port 3340 of the host's LAN address:
+
+```sh
+iroh-relay --dev &
+cargo run -p kuri-link-echo --bin kuri-link-echo-server -- \
+    --bind 127.0.0.1:0 --relay http://192.0.2.10:3340 > ticket &
+```
+
+Then run the test with the ticket as above. Without `--relay`, the test fails.
 
 With `KURI_LINK_SCAN=true` the test pairs by pressing the scan button instead,
 so the camera has to find the server's QR code. On the emulator, start it with
