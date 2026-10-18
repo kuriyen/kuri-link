@@ -19,6 +19,21 @@ depend on a tag.
   `KURI-LINK:` followed by base32. Peer files and tickets written by 0.1.0 still
   read in later releases.
 
+## Unreleased
+
+### `kuri-link`
+
+- Fixed: once a remote `Client` loses its connection, as a phone out of signal
+  for longer than QUIC's idle timeout does, it dials again before its next
+  request. Before, every later request failed until the app connected anew. A
+  request under way when the connection is lost still fails and is not sent
+  again. `Client::path()` is `None` for a lost connection.
+
+### Dart package
+
+- A `LinkClient` dials again once its connection is lost, as `Client` does,
+  and its `path()` is `null` meanwhile.
+
 ## 0.1.1 — 2026-10-17
 
 Upgrade if you set `NodeBuilder::bind_addr` to keep a node off some

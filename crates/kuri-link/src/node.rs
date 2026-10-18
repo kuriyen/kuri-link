@@ -1,7 +1,7 @@
 //! A node: one iroh endpoint that can serve applications and call others.
 
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use ciborium::Value;
@@ -267,30 +267,23 @@ impl Node {
 
     /// Connects to `app` on the peer at `addr`. On failure, a configured
     /// [`Waker`] gets one chance to wake the peer before a single retry.
+    ///
+    /// If the connection is lost later, say while a phone is out of signal
+    /// for longer than QUIC's idle timeout, the client dials again the same
+    /// way before its next request.
     pub async fn connect(&self, addr: impl Into<PeerAddr>, app: &str) -> Result<Client, Error> {
         let addr = addr.into();
-        let target = addr.to_iroh();
-        let alpn = crate::alpn(app);
-        let first = self.endpoint.connect(target.clone(), &alpn).await;
-        let conn = match (first, &self.waker) {
-            (Ok(conn), _) => conn,
-            (Err(first), Some(waker)) => {
-                if waker.wake(&addr, app).await {
-                    self.endpoint
-                        .connect(target, &alpn)
-                        .await
-                        .map_err(|e| connect_error(&addr, app, e))?
-                } else {
-                    return Err(connect_error(&addr, app, first));
-                }
-            }
-            (Err(first), None) => return Err(connect_error(&addr, app, first)),
-        };
+        let conn = dial(&self.endpoint, &addr, app, self.waker.as_deref()).await?;
         Ok(Client {
-            inner: Inner::Remote {
-                conn,
+            inner: Inner::Remote(Arc::new(Remote {
+                endpoint: self.endpoint.clone(),
+                addr,
+                app: app.to_owned(),
+                waker: self.waker.clone(),
                 max_frame: self.max_frame,
-            },
+                conn: Mutex::new(conn),
+                dialing: tokio::sync::Mutex::new(()),
+            })),
             credential: None,
         })
     }
@@ -303,6 +296,33 @@ impl Node {
             }
             None => self.endpoint.close().await,
         }
+    }
+}
+
+/// Connects to `app` at `addr`. On failure, `waker` gets one chance to wake
+/// the peer before a single retry.
+async fn dial(
+    endpoint: &Endpoint,
+    addr: &PeerAddr,
+    app: &str,
+    waker: Option<&dyn Waker>,
+) -> Result<Connection, Error> {
+    let target = addr.to_iroh();
+    let alpn = crate::alpn(app);
+    let first = endpoint.connect(target.clone(), &alpn).await;
+    match (first, waker) {
+        (Ok(conn), _) => Ok(conn),
+        (Err(first), Some(waker)) => {
+            if waker.wake(addr, app).await {
+                endpoint
+                    .connect(target, &alpn)
+                    .await
+                    .map_err(|e| connect_error(addr, app, e))
+            } else {
+                Err(connect_error(addr, app, first))
+            }
+        }
+        (Err(first), None) => Err(connect_error(addr, app, first)),
     }
 }
 
@@ -328,16 +348,63 @@ pub struct Client {
 
 #[derive(Clone)]
 enum Inner {
-    Remote { conn: Connection, max_frame: usize },
+    Remote(Arc<Remote>),
     Local { service: Arc<dyn Service> },
+}
+
+/// A back end on a peer: the connection to it, and what it takes to dial
+/// again once that connection is lost.
+struct Remote {
+    endpoint: Endpoint,
+    addr: PeerAddr,
+    app: String,
+    waker: Option<Arc<dyn Waker>>,
+    max_frame: usize,
+    conn: Mutex<Connection>,
+    /// Held while dialing, so that requests which find the connection lost
+    /// at the same time dial once between them.
+    dialing: tokio::sync::Mutex<()>,
+}
+
+impl Remote {
+    fn current(&self) -> Connection {
+        self.conn
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    /// The connection for a new request, dialing again first if the last one
+    /// was lost. A request already under way when its connection is lost
+    /// fails instead of being sent again, since it may have taken effect.
+    async fn connection(&self) -> Result<Connection, WireError> {
+        let conn = self.current();
+        if conn.close_reason().is_none() {
+            return Ok(conn);
+        }
+        let _dialing = self.dialing.lock().await;
+        let conn = self.current();
+        if conn.close_reason().is_none() {
+            // Another request dialed while this one waited.
+            return Ok(conn);
+        }
+        let conn = dial(&self.endpoint, &self.addr, &self.app, self.waker.as_deref())
+            .await
+            .map_err(|e| WireError::Stream(e.to_string()))?;
+        *self
+            .conn
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = conn.clone();
+        Ok(conn)
+    }
 }
 
 impl std::fmt::Debug for Client {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.inner {
-            Inner::Remote { conn, .. } => f
+            Inner::Remote(remote) => f
                 .debug_struct("Client")
-                .field("peer", &conn.remote_id().fmt_short().to_string())
+                .field("peer", &remote.addr.id.fmt_short().to_string())
                 .finish(),
             Inner::Local { .. } => f
                 .debug_struct("Client")
@@ -401,21 +468,26 @@ impl Client {
     /// The peer's key, or `None` when the back end is in this process.
     pub fn peer(&self) -> Option<PeerId> {
         match &self.inner {
-            Inner::Remote { conn, .. } => Some(PeerId::from_iroh(conn.remote_id())),
+            Inner::Remote(remote) => Some(remote.addr.id),
             Inner::Local { .. } => None,
         }
     }
 
     /// The path requests to a remote back end use now: direct or through a
-    /// relay, with its round-trip time. `None` in process, or while the
-    /// connection has no path selected.
+    /// relay, with its round-trip time. `None` in process, while the
+    /// connection has no path selected, or once it is lost; the next request
+    /// then dials again.
     ///
     /// A snapshot: iroh moves a connection from a relay to a direct path once
     /// hole punching succeeds, and back when the network changes.
     pub fn path(&self) -> Option<PathInfo> {
-        let Inner::Remote { conn, .. } = &self.inner else {
+        let Inner::Remote(remote) = &self.inner else {
             return None;
         };
+        let conn = remote.current();
+        if conn.close_reason().is_some() {
+            return None;
+        }
         let paths = conn.paths();
         let path = paths.iter().find(|p| p.is_selected())?;
         let route = match path.remote_addr() {
@@ -447,15 +519,18 @@ impl Client {
                 .call(in_process_caller(), method.to_owned(), args)
                 .await
                 .map_err(|e| CallError::Fault(fault_of(e))),
-            Inner::Remote { conn, max_frame } => {
-                let (mut send, mut recv) = conn
+            Inner::Remote(remote) => {
+                let max_frame = remote.max_frame;
+                let (mut send, mut recv) = remote
+                    .connection()
+                    .await?
                     .open_bi()
                     .await
                     .map_err(|e| WireError::Stream(e.to_string()))?;
-                write_frame(&mut send, &self.header(Op::Call, method, args), *max_frame).await?;
+                write_frame(&mut send, &self.header(Op::Call, method, args), max_frame).await?;
                 send.finish()
                     .map_err(|e| WireError::Stream(e.to_string()))?;
-                match read_frame::<Reply>(&mut recv, *max_frame).await? {
+                match read_frame::<Reply>(&mut recv, max_frame).await? {
                     Reply::Ok(value) => Ok(value),
                     Reply::Err(fault) => Err(fault.into()),
                 }
@@ -487,13 +562,16 @@ impl Client {
                 tokio::spawn(run(theirs));
                 Ok(ours)
             }
-            Inner::Remote { conn, max_frame } => {
-                let (mut send, mut recv) = conn
+            Inner::Remote(remote) => {
+                let max_frame = remote.max_frame;
+                let (mut send, mut recv) = remote
+                    .connection()
+                    .await?
                     .open_bi()
                     .await
                     .map_err(|e| WireError::Stream(e.to_string()))?;
-                write_frame(&mut send, &self.header(Op::Open, method, args), *max_frame).await?;
-                match read_frame::<Reply>(&mut recv, *max_frame).await? {
+                write_frame(&mut send, &self.header(Op::Open, method, args), max_frame).await?;
+                match read_frame::<Reply>(&mut recv, max_frame).await? {
                     Reply::Ok(_) => Ok(Duplex {
                         send: Box::new(send),
                         recv: Box::new(recv),

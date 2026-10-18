@@ -4,6 +4,7 @@
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use kuri_link::{
     Allowlist, BoxFuture, CallError, Client, FaultCode, Methods, Node, NodeKey, PeerAddr, Relays,
@@ -197,6 +198,55 @@ async fn an_app_the_peer_does_not_serve_fails_at_the_handshake() {
         .connect(server.bound_addr(), "not-served")
         .await
         .is_err());
+
+    client_node.shutdown().await;
+    server.shutdown().await;
+}
+
+/// The back end goes away and comes back on the same key and socket, as a
+/// home server does when it restarts. A phone out of signal for longer than
+/// QUIC's idle timeout loses its connection the same way.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_client_dials_again_once_its_connection_is_lost() {
+    let key = NodeKey::generate();
+    let paired = key.public();
+    let server_key = NodeKey::generate();
+    let serve = |socket| {
+        Node::builder()
+            .secret_key(server_key.clone())
+            .relays(Relays::None)
+            .bind_addr(socket)
+            .authorizer(Allowlist::new([paired]))
+            .serve(APP, methods())
+            .bind()
+    };
+    let server = serve(loopback()).await.unwrap();
+    let addr = server.bound_addr();
+    let socket = *addr.addrs.first().unwrap();
+    let client_node = client_with(key).await;
+    let client = client_node.connect(addr, APP).await.unwrap();
+    let hi = Value::Text("hi".into());
+    assert_eq!(client.call("echo", hi.clone()).await.unwrap(), hi);
+
+    server.shutdown().await;
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while client.path().is_some() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("a lost connection has no path");
+
+    let server = serve(socket).await.unwrap();
+    // Requests that find the connection lost together all get through.
+    let calls = (0..8).map(|_| {
+        let (client, hi) = (client.clone(), hi.clone());
+        async move { client.call("echo", hi).await }
+    });
+    for reply in join_all(calls).await {
+        assert_eq!(reply.unwrap(), hi);
+    }
+    assert_eq!(client.path().unwrap().route, Route::Direct(socket));
 
     client_node.shutdown().await;
     server.shutdown().await;
