@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/kuri-link", "crates/kuri-link-ffi", "examples/echo"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.85"
 authors = ["bayanasar"]

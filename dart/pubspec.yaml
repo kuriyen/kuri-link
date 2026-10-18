@@ -1,6 +1,6 @@
 name: kuri_link
 description: Private RPC between a front end and its back end, in this process or on another device.
-version: 0.1.0
+version: 0.1.1
 repository: https://github.com/kuriyen/kuri-link
 publish_to: none
 

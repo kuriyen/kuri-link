@@ -19,7 +19,12 @@ depend on a tag.
   `KURI-LINK:` followed by base32. Peer files and tickets written by 0.1.0 still
   read in later releases.
 
-## Unreleased
+## 0.1.1 — 2026-10-17
+
+Upgrade if you set `NodeBuilder::bind_addr` to keep a node off some
+interfaces: in 0.1.0 a node bound to `127.0.0.1` also listened on `[::]`, so
+it was reachable on every IPv6 interface. The rest of this release only adds
+to the API.
 
 ### `kuri-link`
 
