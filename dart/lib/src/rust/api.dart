@@ -57,6 +57,13 @@ abstract class LinkNode implements RustOpaqueInterface {
   /// This device's public key: how a back end knows it once paired.
   String id();
 
+  /// Tells the node that the device's network may have changed. On Android,
+  /// where the node cannot see that by itself, call it whenever the platform
+  /// reports a change of network; without it, a switch between WiFi and
+  /// mobile data stalls requests until the old path times out. Calling it
+  /// when nothing changed does no harm.
+  Future<void> networkChanged();
+
   /// Opens `app` on whichever back end the configuration names.
   Future<LinkClient> openApp({
     required String app,

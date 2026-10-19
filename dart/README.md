@@ -31,6 +31,12 @@ final sum = cbor.decode(await client.call(
 - `ticketBackEnd(ticket)`: the back end a ticket names, without redeeming it.
   To reach a back end through its relays, start the node with
   `ticketBackEnd(ticket).relays` before pairing.
+- `node.networkChanged()`: tells the node that the device's network may have
+  changed. On Android, native code cannot see network changes, so without it a
+  switch between WiFi and mobile data stalls requests until the old path times
+  out. Call it from a `ConnectivityManager` network callback, as
+  `examples/app` does in `MainActivity`. Elsewhere it is unnecessary but does
+  no harm.
 - `node.shutdown()`: closes the node. One started again from the same key file
   is the same device, so an app can switch relays this way.
 - `node.id()`: this device's public key, by which a back end knows it once

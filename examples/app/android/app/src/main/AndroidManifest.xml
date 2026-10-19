@@ -2,6 +2,9 @@
     xmlns:tools="http://schemas.android.com/tools">
     <!-- Kuri Link dials its back end over the network. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- MainActivity watches the default network and tells the node when it
+         changes. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <!-- The scanner's camera and gallery plugins also ask for the microphone
          and storage, for recording video and picking pictures. Scanning uses
          neither, so the app does not ask for them. -->

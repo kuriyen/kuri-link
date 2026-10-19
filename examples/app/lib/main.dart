@@ -18,10 +18,10 @@
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:cbor/cbor.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_zxing/flutter_zxing.dart';
 import 'package:kuri_link/kuri_link.dart';
 import 'package:path_provider/path_provider.dart';
@@ -130,10 +130,22 @@ class _EchoAppState extends State<EchoApp> {
   String? pairError;
   final ticket = TextEditingController();
 
+  /// On Android, `MainActivity` reports here when the network changes, which
+  /// the node cannot see by itself there.
+  static const network = MethodChannel('kuri_link_example/network');
+
   @override
   void initState() {
     super.initState();
+    network.setMethodCallHandler((_) => node.networkChanged());
     open();
+  }
+
+  @override
+  void dispose() {
+    network.setMethodCallHandler(null);
+    ticket.dispose();
+    super.dispose();
   }
 
   /// The one place the two back ends differ.

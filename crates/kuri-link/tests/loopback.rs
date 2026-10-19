@@ -130,6 +130,10 @@ async fn a_paired_peer_and_an_in_process_back_end_behave_the_same() {
         .expect("connects");
     assert_eq!(remote.peer(), Some(server.id()));
     exercise(&remote, &key.public().to_string()).await;
+    // Being told of a network change that did not happen does no harm.
+    client_node.network_change().await;
+    let hi = Value::Text("hi".into());
+    assert_eq!(remote.call("echo", hi.clone()).await.unwrap(), hi);
     // Relays are off, so the only path is the server's own socket.
     let server_socket = *server.bound_addr().addrs.first().unwrap();
     assert_eq!(remote.path().unwrap().route, Route::Direct(server_socket));

@@ -66,7 +66,7 @@ class KuriLinkLib
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 491397966;
+  int get rustContentHash => 183981360;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -102,6 +102,8 @@ abstract class KuriLinkLibApi extends BaseApi {
   });
 
   String crateApiLinkNodeId({required LinkNode that});
+
+  Future<void> crateApiLinkNodeNetworkChanged({required LinkNode that});
 
   Future<LinkClient> crateApiLinkNodeOpenApp({
     required LinkNode that,
@@ -376,6 +378,40 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
       const TaskConstMeta(debugName: "LinkNode_id", argNames: ["that"]);
 
   @override
+  Future<void> crateApiLinkNodeNetworkChanged({required LinkNode that}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLinkNode(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 7,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiLinkNodeNetworkChangedConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLinkNodeNetworkChangedConstMeta =>
+      const TaskConstMeta(
+        debugName: "LinkNode_network_changed",
+        argNames: ["that"],
+      );
+
+  @override
   Future<LinkClient> crateApiLinkNodeOpenApp({
     required LinkNode that,
     required String app,
@@ -396,7 +432,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 8,
             port: port_,
           );
         },
@@ -434,7 +470,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 9,
             port: port_,
           );
         },
@@ -464,7 +500,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 9)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 10)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_String,
@@ -493,7 +529,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 11,
             port: port_,
           );
         },
@@ -525,7 +561,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 12,
             port: port_,
           );
         },
@@ -559,7 +595,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 13,
             port: port_,
           );
         },
@@ -594,7 +630,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 14,
             port: port_,
           );
         },
@@ -627,7 +663,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 15,
             port: port_,
           );
         },
@@ -665,7 +701,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 16,
             port: port_,
           );
         },
@@ -695,7 +731,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 17,
             port: port_,
           );
         },
@@ -721,7 +757,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(ticket, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 17)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 18)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_peer_addr,
@@ -1715,6 +1751,14 @@ class LinkNodeImpl extends RustOpaque implements LinkNode {
 
   /// This device's public key: how a back end knows it once paired.
   String id() => KuriLinkLib.instance.api.crateApiLinkNodeId(that: this);
+
+  /// Tells the node that the device's network may have changed. On Android,
+  /// where the node cannot see that by itself, call it whenever the platform
+  /// reports a change of network; without it, a switch between WiFi and
+  /// mobile data stalls requests until the old path times out. Calling it
+  /// when nothing changed does no harm.
+  Future<void> networkChanged() =>
+      KuriLinkLib.instance.api.crateApiLinkNodeNetworkChanged(that: this);
 
   /// Opens `app` on whichever back end the configuration names.
   Future<LinkClient> openApp({

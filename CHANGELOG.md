@@ -28,11 +28,22 @@ depend on a tag.
   request. Before, every later request failed until the app connected anew. A
   request under way when the connection is lost still fails and is not sent
   again. `Client::path()` is `None` for a lost connection.
+- `Node::network_change()` tells a node that the device's network may have
+  changed, so that it looks for paths over the new one at once. Android does
+  not let native code see network changes, so there an app calls it from the
+  platform's network callback; without it, a switch between WiFi and mobile
+  data stalled requests for 15 seconds or more.
 
 ### Dart package
 
 - A `LinkClient` dials again once its connection is lost, as `Client` does,
   and its `path()` is `null` meanwhile.
+- `LinkNode.networkChanged()`, the same as `Node::network_change()`.
+
+### Examples
+
+- On Android, the app watches the default network in `MainActivity` and calls
+  `networkChanged()` when it changes.
 
 ## 0.1.1 — 2026-10-17
 

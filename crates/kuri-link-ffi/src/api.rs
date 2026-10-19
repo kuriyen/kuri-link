@@ -178,6 +178,15 @@ impl LinkNode {
         self.relays.clone()
     }
 
+    /// Tells the node that the device's network may have changed. On Android,
+    /// where the node cannot see that by itself, call it whenever the platform
+    /// reports a change of network; without it, a switch between WiFi and
+    /// mobile data stalls requests until the old path times out. Calling it
+    /// when nothing changed does no harm.
+    pub async fn network_changed(&self) {
+        self.inner.network_change().await;
+    }
+
     /// Closes the node. Its key stays in its file, so a node started again
     /// from that file is the same device to every back end it paired with.
     pub async fn shutdown(self) {

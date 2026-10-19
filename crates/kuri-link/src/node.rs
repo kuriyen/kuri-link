@@ -288,6 +288,15 @@ impl Node {
         })
     }
 
+    /// Tells the node that the device's network may have changed, so that it
+    /// looks for paths over the new network now instead of waiting for the old
+    /// ones to time out. On Android, where native code cannot watch the
+    /// network, call it from the platform's network callback; elsewhere iroh
+    /// notices by itself. Calling it when nothing changed does no harm.
+    pub async fn network_change(&self) {
+        self.endpoint.network_change().await;
+    }
+
     /// Stops serving and closes the endpoint.
     pub async fn shutdown(self) {
         match self.router {

@@ -42,6 +42,11 @@ For a remote back end, run the server where the phone can reach it, without
 `--bind`, so its ticket lists the host's addresses; the emulator reaches its
 host's addresses through its own network.
 
+Android does not let native code watch the network, so `MainActivity` does:
+when the default network changes, say from WiFi to mobile data, it tells the
+Dart side, which calls `node.networkChanged()`. Without that, requests stall
+for about as long as the old path takes to time out, some 15 seconds.
+
 ## Pair by QR code
 
 On a terminal, the server draws its ticket as a QR code below the line of
