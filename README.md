@@ -65,7 +65,8 @@ A Dart/Flutter front end uses the `kuri_link` package in `dart/`, generated
 from `crates/kuri-link-ffi` by
 [flutter_rust_bridge](https://github.com/fzyzcjy/flutter_rust_bridge). An app
 ships one native library holding both the bindings and its local back ends;
-`dart/README.md` explains why and how.
+`dart/README.md` explains why and how. To put Kuri Link into an app of your
+own, start with [docs/integration.md](docs/integration.md).
 
 ## Layout
 
@@ -75,6 +76,7 @@ crates/kuri-link-ffi  the plain-typed surface a Dart front end binds to
 dart/                 the Dart package, kuri_link (bindings generated; see its README)
 examples/echo         an example back end: linked into an app, or run as a server
 examples/app          a Flutter app for Linux and Android on that back end, in-process or remote
+docs/integration.md   putting Kuri Link into an app, step by step
 docs/design.md        wire format and design decisions
 ```
 
