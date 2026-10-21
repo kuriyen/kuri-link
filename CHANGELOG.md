@@ -19,6 +19,35 @@ depend on a tag.
   `KURI-LINK:` followed by base32. Peer files and tickets written by 0.1.0 still
   read in later releases.
 
+## Unreleased
+
+### `kuri-link`
+
+- A back end now asks the home router itself to forward its port from
+  outside, by NAT-PMP or else UPnP, and asks for the outside port to equal its
+  own. iroh's mapping, which it replaces on a node that serves an application,
+  let the router choose a new outside port at every start, so each restart
+  changed the back end's public address. The mapping is renewed every two
+  minutes, which also picks up a new public IP from the ISP; `Node::shutdown`
+  releases it.
+- `NodeBuilder::port(port)` binds the node's sockets, both address families,
+  on a port of your choice. A back end that keeps its port keeps its public
+  address across restarts.
+- `Node::reach(timeout)` says whether devices outside the node's network can
+  reach it: `Reach::Public(addr)`, `Reach::BehindNat(addr)` (carrier-grade
+  NAT, or a second router) or `Reach::Unmapped`. `Reach` is
+  `#[non_exhaustive]`.
+- `NodeBuilder::port_mapping(false)` keeps a node from asking the router.
+
+### Examples
+
+- `kuri-link-echo-server` waits up to five seconds for the router before it
+  issues its ticket, so the ticket carries the public address, and says
+  whether devices outside can reach it. `--port` keeps the port across
+  restarts, and `--no-port-mapping` does not ask the router.
+- Without `--bind`, the server listens on both address families, so its
+  ticket lists its IPv6 addresses too.
+
 ## 0.1.2 — 2026-10-20
 
 Upgrade if your app talks to a back end on another device: a client whose

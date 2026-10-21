@@ -230,18 +230,21 @@ use kuri_link::{load_or_create_key, Node, Pairing, PeerSet, Relays};
 let pairing = Pairing::new(PeerSet::open("paired-devices")?);
 let node = Node::builder()
     .secret_key(load_or_create_key(Path::new("server.key"))?)
+    .port(stored_port) // chosen once, kept like the key: see below
     .relays(Relays::None)
     .pairing(pairing.clone())
     .serve(my_app_native::APP, my_app_native::methods())
     .bind()
     .await?;
 
+// Let the router answer first, so the ticket carries the public address.
+let reach = node.reach(Duration::from_secs(5)).await;
 // Show this as a QR code, next to the back end, when a device asks to pair.
 let ticket = pairing.issue(node.addr(), Duration::from_secs(120));
 println!("{ticket}");
 ```
 
-- **Keep the key and the paired set in files**, as above, so a device paired
+- **Keep the key, the port and the paired set**, as above, so a device paired
   once still finds the back end, and is still admitted, after a restart.
 - **Who may call.** With `pairing`, the node's applications admit the paired
   devices and no one else; the caller's key is proven by the handshake.
@@ -252,8 +255,46 @@ println!("{ticket}");
   device's next request, even on a connection already open.
 
 `examples/echo/src/bin/kuri-link-echo-server.rs` is a complete server: it
-takes the key, paired set and relays as arguments, puts its relays in the
-ticket, and draws the ticket as a QR code on a terminal.
+takes the key, port, paired set and relays as arguments, waits for the router
+before it issues the ticket and says whether devices outside can reach it,
+puts its relays in the ticket, and draws the ticket as a QR code on a
+terminal.
+
+### From outside the home
+
+A device away from home, such as a phone on mobile data, reaches the back end
+directly, with no relay and no service in between, when the home router
+forwards the back end's port. The back end asks for that itself, by NAT-PMP
+or UPnP, which home routers answer in their default settings. It asks for the
+outside port to be its own port, and renews the mapping while it runs.
+
+- **Keep the port.** With `NodeBuilder::port`, the back end listens on the
+  same port after a restart, and the router forwards the same outside port
+  again, so the address in every ticket it issued stays good. Without it the
+  port is random, and every restart gives the back end a new public address,
+  which the devices away from home do not learn until they come back. Choose a
+  port once, say at random above 1024, and keep it with the key.
+- **Ask before issuing a ticket.** `node.reach(timeout)` waits for the
+  router's answer, well under a second on a home network, and says what
+  devices outside can do:
+
+  | `Reach` | Meaning |
+  |---|---|
+  | `Public(addr)` | Devices anywhere can dial `addr`. It is in `node.addr()`, so tickets issued from now on carry it. |
+  | `BehindNat(addr)` | The router forwards a port, but its own outside address, `addr`, is not public: the ISP puts the home behind its NAT (carrier-grade NAT), or a second router stands in front. |
+  | `Unmapped` | The router forwards nothing: it does not speak NAT-PMP or UPnP, or has them turned off. |
+
+  In the last two cases devices outside cannot reach the back end without a
+  relay, while devices on the home network still can. Tell the user so when
+  they pair, rather than letting their phone time out later.
+- **What still changes the address** is a new public IP from the ISP. The
+  back end notices within two minutes and lists the new address in
+  `node.addr()`.
+- `NodeBuilder::port_mapping(false)` keeps the back end from asking.
+
+Only IPv4 is mapped and judged. The back end's global IPv6 addresses go into
+its address as well, but whether the router's firewall lets devices outside
+reach them cannot be seen from inside.
 
 ## 5. Pair
 
@@ -292,7 +333,8 @@ camera plugins would otherwise add.
 ## Relays
 
 A relay forwards packets between two nodes that cannot reach each other
-directly, such as a phone on mobile data and a back end behind a home router.
+directly: a phone on mobile data and a back end whose router forwards no
+port, or two devices that are both away from home.
 The packets are encrypted end to end: a relay sees which keys talk to each
 other, when, and how much, never what they say.
 

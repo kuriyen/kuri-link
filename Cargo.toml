@@ -20,6 +20,9 @@ data-encoding = "2"
 # The Dart package pins the same version; the two must match exactly.
 flutter_rust_bridge = "=2.13.0"
 getrandom = "0.4"
+# The versions iroh's own port mapping uses, so nothing new is built.
+igd-next = { version = "0.17", features = ["aio_tokio"] }
+netwatch = "0.19"
 serde = { version = "1", features = ["derive"] }
 serde_bytes = "0.11"
 thiserror = "2"

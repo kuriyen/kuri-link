@@ -1,19 +1,20 @@
 //! A node: one iroh endpoint that can serve applications and call others.
 
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use ciborium::Value;
-use iroh::endpoint::{presets, Connection};
+use iroh::endpoint::{presets, BindOpts, Connection, PortmapperConfig};
 use iroh::protocol::{AcceptError, ProtocolHandler, Router};
-use iroh::{Endpoint, RelayMode, TransportAddr};
+use iroh::{Endpoint, RelayMode, TransportAddr, Watcher};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::addr::{NodeKey, PeerAddr, PeerId, RelayUrl};
 use crate::hooks::{AuthRequest, Authorizer, Caller, DenyAll, Origin, Waker};
 use crate::pairing::{Pairing, PAIR_APP};
+use crate::portmap::{is_public, PortMapper};
 use crate::service::{from_value, to_value, AppError, Duplex, Service};
 use crate::wire::{
     read_frame, write_frame, Fault, FaultCode, Header, Op, Reply, WireError, DEFAULT_MAX_FRAME,
@@ -67,6 +68,8 @@ pub struct NodeBuilder {
     key: Option<NodeKey>,
     relays: Relays,
     bind: Option<SocketAddr>,
+    port: Option<u16>,
+    port_mapping: bool,
     authorizer: Option<Arc<dyn Authorizer>>,
     pairing: Option<Pairing>,
     waker: Option<Arc<dyn Waker>>,
@@ -80,6 +83,8 @@ impl Default for NodeBuilder {
             key: None,
             relays: Relays::None,
             bind: None,
+            port: None,
+            port_mapping: true,
             authorizer: None,
             pairing: None,
             waker: None,
@@ -106,6 +111,34 @@ impl NodeBuilder {
     /// every interface of both address families.
     pub fn bind_addr(mut self, addr: SocketAddr) -> Self {
         self.bind = Some(addr);
+        self
+    }
+
+    /// Binds iroh's sockets, on every interface of both address families, on
+    /// `port` instead of a random port. Ignored with [`NodeBuilder::bind_addr`],
+    /// whose address carries its own port.
+    ///
+    /// A back end that keeps its port keeps its address: the router is asked
+    /// to forward the same port from outside (see
+    /// [`NodeBuilder::port_mapping`]), so the public address in the tickets it
+    /// issued stays good after a restart. Choose a port once, say at random
+    /// above 1024, and keep it with the node's key.
+    pub fn port(mut self, port: u16) -> Self {
+        self.port = Some(port);
+        self
+    }
+
+    /// Whether to ask the router to forward this node's port from outside, by
+    /// NAT-PMP or UPnP, so that devices away from home can dial it. On by
+    /// default.
+    ///
+    /// A node that serves an application asks for the outside port to equal
+    /// its own, keeps the mapping renewed, and lists the outside address in
+    /// [`Node::addr`]; [`Node::reach`] says whether the router granted it. A
+    /// node that serves nothing leaves mapping to iroh, which lets the router
+    /// pick the port. Turned off, neither asks.
+    pub fn port_mapping(mut self, on: bool) -> Self {
+        self.port_mapping = on;
         self
     }
 
@@ -176,7 +209,13 @@ impl NodeBuilder {
             });
         }
 
+        // A back end maps its own port (see `portmap`), so iroh must not map
+        // it as well.
+        let maps_own_port = self.port_mapping && !handlers.is_empty();
         let mut builder = Endpoint::builder(presets::Minimal);
+        if maps_own_port || !self.port_mapping {
+            builder = builder.portmapper_config(PortmapperConfig::Disabled);
+        }
         if let Some(key) = self.key {
             builder = builder.secret_key(key.into_iroh());
         }
@@ -187,19 +226,53 @@ impl NodeBuilder {
             }
             Relays::PublicDefault => builder.relay_mode(RelayMode::Default),
         };
-        if let Some(addr) = self.bind {
-            // On its own, iroh's bind_addr replaces only the default socket of
-            // the same address family; the other family's stays on every
-            // interface.
-            builder = builder
-                .clear_ip_transports()
-                .bind_addr(addr)
-                .map_err(|e| Error::Bind(e.to_string()))?;
+        let bind_error = |e: iroh::endpoint::InvalidSocketAddr| Error::Bind(e.to_string());
+        match (self.bind, self.port) {
+            (Some(addr), _) => {
+                // On its own, iroh's bind_addr replaces only the default
+                // socket of the same address family; the other family's stays
+                // on every interface.
+                builder = builder
+                    .clear_ip_transports()
+                    .bind_addr(addr)
+                    .map_err(bind_error)?;
+            }
+            (None, Some(port)) => {
+                // As iroh's defaults: IPv4 must bind, IPv6 may fail.
+                builder = builder
+                    .clear_ip_transports()
+                    .bind_addr(SocketAddr::from((Ipv4Addr::UNSPECIFIED, port)))
+                    .map_err(bind_error)?
+                    .bind_addr_with_opts(
+                        SocketAddr::from((Ipv6Addr::UNSPECIFIED, port)),
+                        BindOpts::default().set_is_required(false),
+                    )
+                    .map_err(bind_error)?;
+            }
+            (None, None) => {}
         }
         let endpoint = builder
             .bind()
             .await
             .map_err(|e| Error::Bind(e.to_string()))?;
+
+        // The router can forward only to an IPv4 socket it can reach: not
+        // one on loopback.
+        let mapper = if maps_own_port {
+            endpoint
+                .bound_sockets()
+                .into_iter()
+                .find_map(|socket| match socket {
+                    SocketAddr::V4(v4) if !v4.ip().is_loopback() => Some(v4),
+                    _ => None,
+                })
+                .map(|v4| {
+                    let local_ip = Some(*v4.ip()).filter(|ip| !ip.is_unspecified());
+                    PortMapper::spawn(endpoint.clone(), local_ip, v4.port())
+                })
+        } else {
+            None
+        };
 
         let router = if handlers.is_empty() {
             None
@@ -215,6 +288,8 @@ impl NodeBuilder {
         Ok(Node {
             endpoint,
             router,
+            mapper,
+            iroh_maps: self.port_mapping && !maps_own_port,
             waker: self.waker,
             max_frame,
         })
@@ -226,6 +301,10 @@ impl NodeBuilder {
 pub struct Node {
     endpoint: Endpoint,
     router: Option<Router>,
+    /// Keeps a back end's port forwarded by the router.
+    mapper: Option<PortMapper>,
+    /// Whether iroh asks the router for a mapping instead.
+    iroh_maps: bool,
     waker: Option<Arc<dyn Waker>>,
     max_frame: usize,
 }
@@ -265,6 +344,48 @@ impl Node {
         addr
     }
 
+    /// Whether devices outside this node's network can reach it. Waits up to
+    /// `timeout` for the router to answer a request to forward the node's
+    /// port, which on a home network takes well under a second; a back end
+    /// asks before it issues a ticket, so that the ticket carries the public
+    /// address.
+    ///
+    /// Only IPv4 is judged. A global IPv6 address is listed in
+    /// [`Node::addr`] all the same, but whether the router's firewall lets
+    /// devices outside reach it cannot be seen from inside.
+    pub async fn reach(&self, timeout: Duration) -> Reach {
+        let deadline = tokio::time::Instant::now() + timeout;
+        let mapped = match &self.mapper {
+            Some(mapper) => mapper.settled(deadline).await.map(SocketAddr::V4),
+            None => None,
+        };
+        if let Some(external) = mapped.filter(is_public) {
+            return Reach::Public(external);
+        }
+        let own_public = |addr: &iroh::EndpointAddr| addr.ip_addrs().copied().find(is_public);
+        let mut watch = self.endpoint.watch_addr();
+        if self.iroh_maps {
+            // iroh's mapping, if the router grants one, shows up among the
+            // node's addresses.
+            while own_public(&watch.get()).is_none() {
+                if tokio::time::timeout_at(deadline, watch.updated())
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        }
+        // A public address of the node's own: a host with no NAT in front.
+        if let Some(public) = own_public(&watch.get()) {
+            return Reach::Public(public);
+        }
+        match mapped {
+            Some(external) => Reach::BehindNat(external),
+            None => Reach::Unmapped,
+        }
+    }
+
     /// Connects to `app` on the peer at `addr`. On failure, a configured
     /// [`Waker`] gets one chance to wake the peer before a single retry.
     ///
@@ -297,8 +418,12 @@ impl Node {
         self.endpoint.network_change().await;
     }
 
-    /// Stops serving and closes the endpoint.
+    /// Stops serving, asks the router to stop forwarding the node's port, and
+    /// closes the endpoint.
     pub async fn shutdown(self) {
+        if let Some(mapper) = self.mapper {
+            mapper.release().await;
+        }
         match self.router {
             Some(router) => {
                 let _ = router.shutdown().await;
@@ -433,6 +558,25 @@ pub enum Route {
     Direct(SocketAddr),
     /// Through this relay, which forwards packets it cannot read.
     Relay(RelayUrl),
+}
+
+/// Whether devices outside a node's network can reach it, as far as the node
+/// can tell from inside. More cases may come, so a `match` on it needs a
+/// wildcard arm.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Reach {
+    /// Devices anywhere can dial this public address: the router forwards it
+    /// to the node, or it is the node's own.
+    Public(SocketAddr),
+    /// The router forwards a port, but from this address, which is not public
+    /// itself: the home is behind its ISP's NAT (carrier-grade NAT) or behind
+    /// a second router. Devices outside cannot reach the node without a relay.
+    BehindNat(SocketAddr),
+    /// No port is forwarded: the router does not speak NAT-PMP or UPnP, has
+    /// them turned off, or was not asked. Devices outside cannot reach the
+    /// node without a relay.
+    Unmapped,
 }
 
 /// The path a connection uses at one moment. More fields may come.
@@ -744,6 +888,50 @@ mod tests {
         let sockets = node.endpoint.bound_sockets();
         assert_eq!(sockets.len(), 1, "bound {sockets:?}");
         assert_eq!(sockets[0].ip(), std::net::Ipv4Addr::LOCALHOST);
+        node.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn a_port_is_bound_on_every_interface_of_both_families() {
+        // A free port, found by binding and letting go.
+        let port = std::net::UdpSocket::bind("0.0.0.0:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let node = Node::builder()
+            .port(port)
+            .port_mapping(false)
+            .bind()
+            .await
+            .unwrap();
+        let sockets = node.endpoint.bound_sockets();
+        assert!(
+            sockets
+                .iter()
+                .all(|s| s.port() == port && s.ip().is_unspecified()),
+            "bound {sockets:?}"
+        );
+        assert!(sockets.iter().any(SocketAddr::is_ipv4), "bound {sockets:?}");
+        node.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn a_back_end_on_loopback_says_at_once_that_it_is_unmapped() {
+        let node = Node::builder()
+            .bind_addr("127.0.0.1:0".parse().unwrap())
+            .serve("echo", crate::Methods::new())
+            .bind()
+            .await
+            .unwrap();
+        assert!(node.mapper.is_none(), "a router cannot forward to loopback");
+        let start = std::time::Instant::now();
+        assert_eq!(node.reach(Duration::from_secs(5)).await, Reach::Unmapped);
+        assert!(
+            start.elapsed() < Duration::from_secs(1),
+            "{:?}",
+            start.elapsed()
+        );
         node.shutdown().await;
     }
 }

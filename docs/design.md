@@ -121,6 +121,30 @@ What keeps it tight:
 - **One way.** The back end learns the front end's key; the front end keeps the
   address `Node::pair` returns. Two nodes that serve each other pair twice.
 
+## Reaching a back end from outside
+
+A home back end is behind the home router's NAT, and its public IP is not
+fixed. Kuri Link reaches it from outside without a third party: no relay, no
+rendezvous service, no DNS name.
+
+- **The back end asks the router to forward its port**, by NAT-PMP (RFC 6886)
+  or else UPnP, renewing every two minutes. Home routers grant this in their
+  default settings. The outside address joins the node's own addresses, so
+  tickets carry it, and a front end on mobile data dials it directly.
+- **It asks for the outside port to equal its own.** iroh can map a port by
+  itself, but it lets the router choose the outside port, and a router
+  chooses a new one each time the node starts: measured on a home router, six
+  starts on one local port gave six outside ports. Asked for its own port, the
+  same router granted it, and granted it again after a restart. With a kept
+  port (`NodeBuilder::port`), a restart no longer changes the back end's
+  public address. iroh's own mapping is therefore off on a node that serves
+  an application; a node that only calls keeps it.
+- **It says when it cannot be reached.** `Node::reach` reports `Public`,
+  `BehindNat` (the router's own outside address is not public: carrier-grade
+  NAT, or a second router) or `Unmapped` (no router forwards the port). In
+  the last two cases no direct path from outside exists; that is the network's
+  shape, not a fault, and only a relay closes it.
+
 ## Hooks
 
 | Hook | Default | Purpose |
@@ -129,6 +153,8 @@ What keeps it tight:
 | `Authorizer` | `DenyAll`, or the paired set with pairing on | who may call what |
 | `Pairing` | off | let devices join by one-time ticket |
 | `Relays` | `None` | which relays may carry traffic |
+| `port` | random | the port a back end keeps, so its public address survives restarts |
+| `port_mapping` | on | ask the home router to forward the port |
 | `Waker` | none | wake a sleeping back end before one retry |
 
 ## Not yet

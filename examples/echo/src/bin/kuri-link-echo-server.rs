@@ -3,13 +3,23 @@
 //! redeem one until it is stopped.
 //!
 //! ```text
-//! kuri-link-echo-server [--bind ADDR] [--peers FILE] [--key FILE] [--relay URL]...
+//! kuri-link-echo-server [--port PORT | --bind ADDR] [--no-port-mapping]
+//!                       [--peers FILE] [--key FILE] [--relay URL]...
 //! ```
 //!
-//! `--bind` defaults to every interface on a random port, and the ticket then
-//! lists the addresses of those interfaces. `--peers` keeps the paired devices
-//! across restarts, and `--key` keeps the server's own key, so a front end
-//! paired once still finds it.
+//! The server listens on every interface, on a random port unless `--port`
+//! names one, and the ticket lists the addresses of those interfaces. `--bind`
+//! listens on one address instead.
+//!
+//! Before it issues the ticket, the server asks the router to forward its port
+//! from outside, and waits up to five seconds for an answer: a ticket with the
+//! router's public address lets a phone on mobile data pair and connect with
+//! no relay. It says which way that went. `--no-port-mapping` does not ask.
+//!
+//! `--peers` keeps the paired devices across restarts, and `--key` keeps the
+//! server's own key. With `--port` too, the router forwards the same outside
+//! port after a restart, so a front end paired once still finds the server,
+//! from home or away.
 //!
 //! `--relay` names a relay you run, such as `iroh-relay`; repeat it for more
 //! than one. The server stays reachable through it, and the ticket names it,
@@ -20,11 +30,15 @@ use std::io::IsTerminal;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use kuri_link::{Node, Pairing, PeerSet, RelayUrl, Relays};
+use kuri_link::{Node, Pairing, PeerSet, Reach, RelayUrl, Relays};
 use qrcode::render::unicode::Dense1x2;
 use qrcode::QrCode;
 
 const TICKET_TTL: Duration = Duration::from_secs(10 * 60);
+
+/// How long to wait for the router to forward the server's port. A home
+/// router answers within a second; one that has not answered by now will not.
+const MAPPING_WAIT: Duration = Duration::from_secs(5);
 
 #[tokio::main]
 async fn main() {
@@ -35,7 +49,9 @@ async fn main() {
 }
 
 async fn run() -> Result<(), String> {
-    let mut bind: SocketAddr = ([0, 0, 0, 0], 0).into();
+    let mut bind: Option<SocketAddr> = None;
+    let mut port = None;
+    let mut port_mapping = true;
     let mut peers = PeerSet::new();
     let mut key = None;
     let mut relays: Vec<RelayUrl> = Vec::new();
@@ -43,7 +59,9 @@ async fn run() -> Result<(), String> {
     while let Some(flag) = args.next() {
         let mut value = || args.next().ok_or(format!("{flag} needs a value"));
         match flag.as_str() {
-            "--bind" => bind = value()?.parse().map_err(|e| format!("--bind: {e}"))?,
+            "--bind" => bind = Some(value()?.parse().map_err(|e| format!("--bind: {e}"))?),
+            "--port" => port = Some(value()?.parse().map_err(|e| format!("--port: {e}"))?),
+            "--no-port-mapping" => port_mapping = false,
             "--peers" => peers = PeerSet::open(value()?).map_err(|e| format!("--peers: {e}"))?,
             "--key" => {
                 let path = value()?;
@@ -64,13 +82,20 @@ async fn run() -> Result<(), String> {
         } else {
             Relays::Custom(relays.clone())
         })
-        .bind_addr(bind)
+        .port_mapping(port_mapping)
         .pairing(pairing.clone())
         .serve(kuri_link_echo::APP, kuri_link_echo::methods());
     if let Some(key) = key {
         builder = builder.secret_key(key);
     }
+    match (bind, port) {
+        (Some(_), Some(_)) => return Err("--bind and --port both name a port; pass one".into()),
+        (Some(addr), None) => builder = builder.bind_addr(addr),
+        (None, Some(port)) => builder = builder.port(port),
+        (None, None) => {}
+    }
     let node = builder.bind().await.map_err(|e| e.to_string())?;
+    let reach = node.reach(MAPPING_WAIT).await;
 
     // A socket bound to every interface names no address a peer can dial;
     // the addresses iroh found on those interfaces do.
@@ -78,15 +103,21 @@ async fn run() -> Result<(), String> {
     if addr.addrs.is_empty() {
         addr = node.addr();
     }
+    // Listed already when the server listens on every interface, but not
+    // when it is bound to one address.
+    if let Reach::Public(outside) | Reach::BehindNat(outside) = reach {
+        addr = addr.with_addr(outside);
+    }
     // The relays go in as given: the connection to them may not be up yet, and
     // until it is, iroh does not list them.
     for relay in relays {
         addr = addr.with_relay(relay);
     }
     if addr.addrs.is_empty() && addr.relays.is_empty() {
-        return Err(format!(
-            "no address to put in the ticket for {bind}; pass --bind with this host's address, or --relay"
-        ));
+        return Err(
+            "no address to put in the ticket; pass --bind with this host's address, or --relay"
+                .into(),
+        );
     }
 
     // One line, so a script or a test can read it.
@@ -101,8 +132,30 @@ async fn run() -> Result<(), String> {
         node.id().fmt_short(),
         TICKET_TTL.as_secs() / 60,
     );
+    eprintln!("{}", describe(&reach, port_mapping));
     std::future::pending::<()>().await;
     Ok(())
+}
+
+/// Whether a device away from this network can reach the server, and if not,
+/// what stands in the way.
+fn describe(reach: &Reach, asked: bool) -> String {
+    const ONLY_HERE: &str = "devices on this network can still pair and connect";
+    match reach {
+        Reach::Public(public) => format!("reachable from outside at {public}"),
+        Reach::BehindNat(outside) => format!(
+            "not reachable from outside: the router forwards {outside}, but that \
+             address is not public: the ISP puts this network behind its own NAT \
+             (carrier-grade NAT), or a second router stands in front; {ONLY_HERE}"
+        ),
+        Reach::Unmapped if !asked => {
+            format!("not reachable from outside: --no-port-mapping; {ONLY_HERE}")
+        }
+        _ => format!(
+            "not reachable from outside: the router forwards no port (it does not \
+             speak NAT-PMP or UPnP, or has them turned off); {ONLY_HERE}"
+        ),
+    }
 }
 
 /// `text` as a QR code in half-height blocks, two modules to a character,
