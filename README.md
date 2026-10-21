@@ -30,8 +30,9 @@ until they arrive.
   the home router to forward its port (NAT-PMP or UPnP) and keeps the same
   outside port across restarts, so a phone on mobile data dials it directly,
   with nothing in between. It is off by default, since it opens an inbound
-  port on the router. When the network makes it impossible, the back end says
-  so.
+  port on the router. When its address changes anyway, it tells its devices;
+  at home they find it by mDNS. When the network makes all that impossible,
+  the back end says so.
 - **No silent third parties.** Relays are off unless you name them — your own
   `iroh-relay`, or the public ones, by explicit choice.
 - **Evolvable payloads.** CBOR maps with named keys: a newer peer can add

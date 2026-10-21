@@ -45,6 +45,26 @@ depend on a tag.
   reach it: `Reach::Public(addr)`, `Reach::BehindNat(addr)` (carrier-grade
   NAT, or a second router) or `Reach::Unmapped(reason)`. `Reach` is
   `#[non_exhaustive]`.
+- A back end tells its front ends its address, and each change of it, over a
+  reserved method, `ADDR_METHOD` (`kuri-link.addr`), which every application
+  it serves answers without its service seeing it. A remote `Client` asks once
+  it makes its first request, and dials what it learns from then on.
+  `Client::peer_addr()` is the address as the client knows it, and
+  `Client::peer_addr_updates()` follows its changes, so an app can keep it. A
+  back end from before this release refuses the method, and nothing changes.
+- Nodes announce and look each other up on the local network by mDNS, so a
+  device at home finds its back end even after the back end's address there
+  changed. Only a node that serves an application announces itself.
+  `NodeBuilder::local_discovery(false)` turns this off.
+- Connecting to a back end whose every address is on its own network, with
+  no relay, gives up after five seconds instead of thirty, and the error says
+  that only a device on that network can reach it.
+
+### Dart package
+
+- `LinkClient.backEnd()` and `LinkClient.backEndUpdates()`: the back end's
+  address as the client knows it, and its changes, to store in place of the
+  one kept from pairing.
 
 ### Examples
 
@@ -54,6 +74,9 @@ depend on a tag.
   devices outside can reach it. `--port` keeps the port across restarts.
 - Without `--bind`, the server listens on both address families, so its
   ticket lists its IPv6 addresses too.
+- The app stores the back end's address whenever the back end reports a
+  change, and closes a client it no longer uses. On Android it holds a
+  multicast lock, so that it hears the back end announce itself at home.
 
 ## 0.1.2 — 2026-10-20
 

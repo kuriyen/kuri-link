@@ -8,7 +8,6 @@
 
 use std::collections::HashMap;
 use std::fmt;
-use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -16,7 +15,7 @@ use std::time::{Duration, Instant};
 use ciborium::Value;
 use serde::{Deserialize, Serialize};
 
-use crate::addr::{PeerAddr, PeerId, RelayUrl};
+use crate::addr::PeerAddr;
 use crate::hooks::{AuthRequest, Authorizer, Caller, Denied, Origin};
 use crate::node::{CallError, Error, Node};
 use crate::peers::PeerSet;
@@ -130,28 +129,13 @@ impl FromStr for Ticket {
                 wire.v
             )));
         }
-        let id: [u8; 32] = wire
-            .id
-            .as_slice()
-            .try_into()
-            .map_err(|_| TicketError("the key is not 32 bytes".into()))?;
-        let id = PeerId::from_bytes(&id).map_err(|e| TicketError(format!("key: {e}")))?;
+        let addr = PeerAddr::from_parts(&wire.id, &wire.ip, &wire.relay)
+            .map_err(|e| TicketError(e.to_string()))?;
         let token: [u8; 16] = wire
             .token
             .as_slice()
             .try_into()
             .map_err(|_| TicketError("the token is not 16 bytes".into()))?;
-        let mut addr = PeerAddr::new(id);
-        for ip in &wire.ip {
-            let socket: SocketAddr = ip
-                .parse()
-                .map_err(|e| TicketError(format!("address {ip}: {e}")))?;
-            addr = addr.with_addr(socket);
-        }
-        for relay in &wire.relay {
-            let url = RelayUrl::from_str(relay).map_err(|e| TicketError(e.to_string()))?;
-            addr = addr.with_relay(url);
-        }
         Ok(Ticket {
             addr,
             token: PairToken(token),
@@ -332,7 +316,7 @@ impl Node {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::addr::NodeKey;
+    use crate::addr::{NodeKey, PeerId};
 
     // Written by the first version of pairing, which spoke iroh's types
     // directly. Peer files and tickets already in use must keep reading the

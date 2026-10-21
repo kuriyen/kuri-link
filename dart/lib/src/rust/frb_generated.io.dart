@@ -19,6 +19,10 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
   });
 
   CrossPlatformFinalizerArg
+  get rust_arc_decrement_strong_count_BackEndUpdatesPtr => wire
+      ._rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdatesPtr;
+
+  CrossPlatformFinalizerArg
   get rust_arc_decrement_strong_count_LinkClientPtr => wire
       ._rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLinkClientPtr;
 
@@ -29,6 +33,12 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
   CrossPlatformFinalizerArg
   get rust_arc_decrement_strong_count_LinkStreamPtr => wire
       ._rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLinkStreamPtr;
+
+  @protected
+  BackEndUpdates
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    dynamic raw,
+  );
 
   @protected
   LinkClient
@@ -49,6 +59,12 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
   );
 
   @protected
+  BackEndUpdates
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    dynamic raw,
+  );
+
+  @protected
   LinkClient
   dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLinkClient(
     dynamic raw,
@@ -63,6 +79,12 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
   @protected
   LinkStream
   dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLinkStream(
+    dynamic raw,
+  );
+
+  @protected
+  BackEndUpdates
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
     dynamic raw,
   );
 
@@ -92,6 +114,12 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
 
   @protected
   bool dco_decode_bool(dynamic raw);
+
+  @protected
+  BackEndUpdates
+  dco_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    dynamic raw,
+  );
 
   @protected
   Backend dco_decode_box_autoadd_backend(dynamic raw);
@@ -130,10 +158,19 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
 
   @protected
+  BackEndUpdates?
+  dco_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    dynamic raw,
+  );
+
+  @protected
   FaultCode? dco_decode_opt_box_autoadd_fault_code(dynamic raw);
 
   @protected
   LinkPath? dco_decode_opt_box_autoadd_link_path(dynamic raw);
+
+  @protected
+  PeerAddr? dco_decode_opt_box_autoadd_peer_addr(dynamic raw);
 
   @protected
   Uint8List? dco_decode_opt_list_prim_u_8_strict(dynamic raw);
@@ -154,6 +191,12 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
   BigInt dco_decode_usize(dynamic raw);
 
   @protected
+  BackEndUpdates
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   LinkClient
   sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLinkClient(
     SseDeserializer deserializer,
@@ -172,6 +215,12 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
   );
 
   @protected
+  BackEndUpdates
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   LinkClient
   sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLinkClient(
     SseDeserializer deserializer,
@@ -186,6 +235,12 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
   @protected
   LinkStream
   sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLinkStream(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  BackEndUpdates
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
     SseDeserializer deserializer,
   );
 
@@ -215,6 +270,12 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
 
   @protected
   bool sse_decode_bool(SseDeserializer deserializer);
+
+  @protected
+  BackEndUpdates
+  sse_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    SseDeserializer deserializer,
+  );
 
   @protected
   Backend sse_decode_box_autoadd_backend(SseDeserializer deserializer);
@@ -253,12 +314,21 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
 
   @protected
+  BackEndUpdates?
+  sse_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   FaultCode? sse_decode_opt_box_autoadd_fault_code(
     SseDeserializer deserializer,
   );
 
   @protected
   LinkPath? sse_decode_opt_box_autoadd_link_path(SseDeserializer deserializer);
+
+  @protected
+  PeerAddr? sse_decode_opt_box_autoadd_peer_addr(SseDeserializer deserializer);
 
   @protected
   Uint8List? sse_decode_opt_list_prim_u_8_strict(SseDeserializer deserializer);
@@ -277,6 +347,13 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
 
   @protected
   BigInt sse_decode_usize(SseDeserializer deserializer);
+
+  @protected
+  void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    BackEndUpdates self,
+    SseSerializer serializer,
+  );
 
   @protected
   void
@@ -301,6 +378,13 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
 
   @protected
   void
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    BackEndUpdates self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void
   sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLinkClient(
     LinkClient self,
     SseSerializer serializer,
@@ -317,6 +401,13 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
   void
   sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLinkStream(
     LinkStream self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    BackEndUpdates self,
     SseSerializer serializer,
   );
 
@@ -349,6 +440,13 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
 
   @protected
   void sse_encode_bool(bool self, SseSerializer serializer);
+
+  @protected
+  void
+  sse_encode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    BackEndUpdates self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_box_autoadd_backend(Backend self, SseSerializer serializer);
@@ -399,6 +497,13 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
   );
 
   @protected
+  void
+  sse_encode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    BackEndUpdates? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_fault_code(
     FaultCode? self,
     SseSerializer serializer,
@@ -407,6 +512,12 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
   @protected
   void sse_encode_opt_box_autoadd_link_path(
     LinkPath? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_peer_addr(
+    PeerAddr? self,
     SseSerializer serializer,
   );
 
@@ -445,6 +556,40 @@ class KuriLinkLibWire implements BaseWire {
   /// The symbols are looked up in [dynamicLibrary].
   KuriLinkLibWire(ffi.DynamicLibrary dynamicLibrary)
     : _lookup = dynamicLibrary.lookup;
+
+  void
+  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    ffi.Pointer<ffi.Void> ptr,
+  ) {
+    return _rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+      ptr,
+    );
+  }
+
+  late final _rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdatesPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
+        'frbgen_kuri_link_rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates',
+      );
+  late final _rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates =
+      _rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdatesPtr
+          .asFunction<void Function(ffi.Pointer<ffi.Void>)>();
+
+  void
+  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    ffi.Pointer<ffi.Void> ptr,
+  ) {
+    return _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+      ptr,
+    );
+  }
+
+  late final _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdatesPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
+        'frbgen_kuri_link_rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates',
+      );
+  late final _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates =
+      _rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdatesPtr
+          .asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 
   void
   rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLinkClient(

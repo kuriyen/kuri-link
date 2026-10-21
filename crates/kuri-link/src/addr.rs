@@ -11,6 +11,7 @@ use std::net::SocketAddr;
 use std::str::FromStr;
 
 use data_encoding::{HEXLOWER, HEXLOWER_PERMISSIVE};
+use serde::{Deserialize, Serialize};
 
 /// A string or byte form that does not hold a key or an address.
 #[derive(Debug, Clone, thiserror::Error)]
@@ -177,6 +178,30 @@ impl PeerAddr {
         self
     }
 
+    /// From the parts a ticket or an address update carries: the key's
+    /// bytes, and the addresses and relays as text.
+    pub(crate) fn from_parts(
+        id: &[u8],
+        ips: &[String],
+        relays: &[String],
+    ) -> Result<PeerAddr, ParseError> {
+        let id: [u8; 32] = id
+            .try_into()
+            .map_err(|_| ParseError("the key is not 32 bytes".into()))?;
+        let id = PeerId::from_bytes(&id).map_err(|e| ParseError(format!("key: {e}")))?;
+        let mut addr = PeerAddr::new(id);
+        for ip in ips {
+            let socket: SocketAddr = ip
+                .parse()
+                .map_err(|e| ParseError(format!("address {ip}: {e}")))?;
+            addr = addr.with_addr(socket);
+        }
+        for relay in relays {
+            addr = addr.with_relay(RelayUrl::from_str(relay)?);
+        }
+        Ok(addr)
+    }
+
     pub(crate) fn from_iroh(addr: &iroh::EndpointAddr) -> PeerAddr {
         PeerAddr {
             id: PeerId(addr.id),
@@ -194,6 +219,32 @@ impl PeerAddr {
             addr = addr.with_relay_url(relay.0.clone());
         }
         addr
+    }
+}
+
+/// A [`PeerAddr`] as a back end sends its own to its front ends. Named keys,
+/// as everywhere on the wire, so a later version can add fields that this one
+/// ignores.
+#[derive(Serialize, Deserialize)]
+pub(crate) struct AddrWire {
+    id: serde_bytes::ByteBuf,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    ip: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    relay: Vec<String>,
+}
+
+impl AddrWire {
+    pub(crate) fn new(addr: &PeerAddr) -> AddrWire {
+        AddrWire {
+            id: serde_bytes::ByteBuf::from(addr.id.as_bytes().to_vec()),
+            ip: addr.addrs.iter().map(|a| a.to_string()).collect(),
+            relay: addr.relays.iter().map(|u| u.to_string()).collect(),
+        }
+    }
+
+    pub(crate) fn to_addr(&self) -> Result<PeerAddr, ParseError> {
+        PeerAddr::from_parts(&self.id, &self.ip, &self.relay)
     }
 }
 

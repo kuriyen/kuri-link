@@ -135,9 +135,17 @@ void main() {
       final path = client.path();
       if (name == 'local') {
         expect(path, isNull);
+        expect(client.backEnd(), isNull);
+        expect(client.backEndUpdates(), isNull);
       } else {
         expect(path!.route, LinkRoute.direct(addr: backEnd.addrs.single));
         expect(path.rttMicros, greaterThan(0));
+        // The server lists the same socket it put in the ticket.
+        expect(client.backEnd()!.id, backEnd.id);
+        expect(client.backEnd()!.addrs, backEnd.addrs);
+        final updates = client.backEndUpdates()!;
+        client.dispose();
+        expect(await updates.next(), isNull, reason: 'the client is gone');
       }
     });
   }

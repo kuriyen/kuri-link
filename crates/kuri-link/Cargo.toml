@@ -16,6 +16,7 @@ ciborium.workspace = true
 data-encoding.workspace = true
 getrandom.workspace = true
 igd-next.workspace = true
+iroh-mdns-address-lookup.workspace = true
 netwatch.workspace = true
 serde.workspace = true
 serde_bytes.workspace = true

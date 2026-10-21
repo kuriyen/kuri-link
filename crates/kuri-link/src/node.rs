@@ -1,25 +1,50 @@
 //! A node: one iroh endpoint that can serve applications and call others.
 
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::Duration;
 
 use ciborium::Value;
 use iroh::endpoint::{presets, BindOpts, Connection, PortmapperConfig};
 use iroh::protocol::{AcceptError, ProtocolHandler, Router};
 use iroh::{Endpoint, RelayMode, TransportAddr, Watcher};
+use iroh_mdns_address_lookup::MdnsAddressLookup;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use tokio::sync::{oneshot, watch};
 
-use crate::addr::{NodeKey, PeerAddr, PeerId, RelayUrl};
+use crate::addr::{AddrWire, NodeKey, PeerAddr, PeerId, RelayUrl};
 use crate::hooks::{AuthRequest, Authorizer, Caller, DenyAll, Origin, Waker};
 use crate::pairing::{Pairing, PAIR_APP};
-use crate::portmap::{is_public, PortMapper};
+use crate::portmap::{is_global, is_public, PortMapper};
 use crate::service::{from_value, to_value, AppError, Duplex, Service};
 use crate::wire::{
     read_frame, write_frame, Fault, FaultCode, Header, Op, Reply, WireError, DEFAULT_MAX_FRAME,
     WIRE_VERSION,
 };
+
+/// The method a back end answers itself, on every application it serves: it
+/// sends the caller its own address, then each change of it. A remote
+/// [`Client`] asks for it once it makes a request, and dials the address it
+/// learns from then on ([`Client::peer_addr`]).
+///
+/// Reserved: a [`Service`] never sees a request for it. An [`Authorizer`] is
+/// asked about it like any other method, and asked again before each change
+/// is sent; one that refuses it only keeps the caller from learning of
+/// changes.
+pub const ADDR_METHOD: &str = "kuri-link.addr";
+
+/// The DNS-SD service a node announces itself under on the local network.
+const MDNS_SERVICE: &str = "kuri-link";
+
+/// The shortest gap between two of a back end's address updates, however
+/// often its addresses churn.
+const ADDR_UPDATE_GAP: Duration = Duration::from_secs(1);
+
+/// How long to wait for a back end whose every address is on its own
+/// network. On that network it answers within milliseconds; from anywhere
+/// else it never does, and iroh would wait 30 seconds to say so.
+const LOCAL_DIAL: Duration = Duration::from_secs(5);
 
 /// Which relays a node may use when no direct path exists.
 ///
@@ -63,6 +88,9 @@ pub enum CallError {
     Decode(String),
 }
 
+/// An application a node serves: its name, its service, and who may call it.
+type Served = (Arc<str>, Arc<dyn Service>, Arc<dyn Authorizer>);
+
 /// Configures and binds a [`Node`].
 pub struct NodeBuilder {
     key: Option<NodeKey>,
@@ -73,6 +101,7 @@ pub struct NodeBuilder {
     /// The NAT-PMP router to ask instead of the default gateway's.
     #[cfg(test)]
     nat_pmp: Option<std::net::SocketAddrV4>,
+    local_discovery: bool,
     authorizer: Option<Arc<dyn Authorizer>>,
     pairing: Option<Pairing>,
     waker: Option<Arc<dyn Waker>>,
@@ -90,6 +119,7 @@ impl Default for NodeBuilder {
             port_mapping: false,
             #[cfg(test)]
             nat_pmp: None,
+            local_discovery: true,
             authorizer: None,
             pairing: None,
             waker: None,
@@ -153,6 +183,18 @@ impl NodeBuilder {
         self
     }
 
+    /// Whether to use mDNS on the local network. On by default.
+    ///
+    /// A node that serves an application announces its key and addresses
+    /// there, so devices at home find it even after its address on the home
+    /// network changed. Every node looks peers up that way when it dials, but
+    /// only a node that serves announces itself. A node bound to loopback does
+    /// neither.
+    pub fn local_discovery(mut self, on: bool) -> Self {
+        self.local_discovery = on;
+        self
+    }
+
     /// Who may call this node's applications. Defaults to [`DenyAll`], or,
     /// with [`NodeBuilder::pairing`], to the peers paired so far.
     pub fn authorizer(mut self, authorizer: impl Authorizer) -> Self {
@@ -196,33 +238,32 @@ impl NodeBuilder {
             (None, None) => Arc::new(DenyAll),
         };
         let max_frame = self.max_frame;
-        let mut handlers: Vec<AppHandler> = self
+        let mut apps: Vec<Served> = self
             .apps
             .into_iter()
-            .map(|(app, service)| AppHandler {
-                app: app.into(),
-                service,
-                authorizer: authorizer.clone(),
-                max_frame,
-            })
+            .map(|(app, service)| (app.into(), service, authorizer.clone()))
             .collect();
         if let Some(pairing) = self.pairing {
-            if handlers.iter().any(|h| &*h.app == PAIR_APP) {
+            if apps.iter().any(|(app, _, _)| &**app == PAIR_APP) {
                 return Err(Error::Bind(format!(
                     "the application name {PAIR_APP:?} is reserved for pairing"
                 )));
             }
-            handlers.push(AppHandler {
-                app: PAIR_APP.into(),
-                service: Arc::new(pairing.service()),
-                authorizer: Arc::new(pairing),
-                max_frame,
-            });
+            apps.push((
+                PAIR_APP.into(),
+                Arc::new(pairing.service()),
+                Arc::new(pairing),
+            ));
         }
+        let serves = !apps.is_empty();
+        let configured_relays: Arc<[RelayUrl]> = match &self.relays {
+            Relays::Custom(urls) => urls.clone().into(),
+            Relays::None | Relays::PublicDefault => Arc::new([]),
+        };
 
         // A back end maps its own port (see `portmap`), so iroh must not map
         // it as well.
-        let maps_own_port = self.port_mapping && !handlers.is_empty();
+        let maps_own_port = self.port_mapping && serves;
         let iroh_maps = self.port_mapping && !maps_own_port;
         let mut builder = Endpoint::builder(presets::Minimal);
         if !iroh_maps {
@@ -268,6 +309,21 @@ impl NodeBuilder {
             .await
             .map_err(|e| Error::Bind(e.to_string()))?;
 
+        let on_loopback = self.bind.is_some_and(|addr| addr.ip().is_loopback());
+        if self.local_discovery && !on_loopback {
+            // Added after binding, so that a network without multicast costs
+            // discovery and nothing else.
+            let mdns = MdnsAddressLookup::builder()
+                .service_name(MDNS_SERVICE)
+                .advertise(serves)
+                .build(endpoint.id());
+            match (mdns, endpoint.address_lookup()) {
+                (Ok(mdns), Ok(lookup)) => lookup.add(mdns),
+                (Err(e), _) => tracing::info!(error = %e, "no discovery on the local network"),
+                (_, Err(e)) => tracing::info!(error = %e, "no discovery on the local network"),
+            }
+        }
+
         #[cfg(test)]
         let nat_pmp = self.nat_pmp;
         #[cfg(not(test))]
@@ -295,15 +351,23 @@ impl NodeBuilder {
             None
         };
 
-        let router = if handlers.is_empty() {
-            None
-        } else {
+        let router = if serves {
+            let own = own_addr(&endpoint, configured_relays);
             let mut router = Router::builder(endpoint.clone());
-            for handler in handlers {
-                let alpn = crate::alpn(&handler.app);
+            for (app, service, authorizer) in apps {
+                let alpn = crate::alpn(&app);
+                let handler = AppHandler {
+                    app,
+                    service,
+                    authorizer,
+                    own: own.clone(),
+                    max_frame,
+                };
                 router = router.accept(alpn, handler);
             }
             Some(router.spawn())
+        } else {
+            None
         };
 
         Ok(Node {
@@ -413,6 +477,11 @@ impl Node {
     /// Connects to `app` on the peer at `addr`. On failure, a configured
     /// [`Waker`] gets one chance to wake the peer before a single retry.
     ///
+    /// When none of `addr`'s addresses can be reached from outside the peer's
+    /// own network and it names no relay, connecting gives up after five
+    /// seconds rather than iroh's thirty, and says so: the peer can only be
+    /// reached from its own network.
+    ///
     /// If the connection is lost later, say while a phone is out of signal
     /// for longer than QUIC's idle timeout, the client dials again the same
     /// way before its next request.
@@ -422,12 +491,14 @@ impl Node {
         Ok(Client {
             inner: Inner::Remote(Arc::new(Remote {
                 endpoint: self.endpoint.clone(),
-                addr,
+                id: addr.id,
+                addr: watch::Sender::new(addr),
                 app: app.to_owned(),
                 waker: self.waker.clone(),
                 max_frame: self.max_frame,
                 conn: Mutex::new(conn),
                 dialing: tokio::sync::Mutex::new(()),
+                following: Mutex::new(None),
             })),
             credential: None,
         })
@@ -467,15 +538,24 @@ async fn dial(
 ) -> Result<Connection, Error> {
     let target = addr.to_iroh();
     let alpn = crate::alpn(app);
-    let first = endpoint.connect(target.clone(), &alpn).await;
+    let local = only_local(addr);
+    let connect = || async {
+        let attempt = endpoint.connect(target.clone(), &alpn);
+        if local {
+            match tokio::time::timeout(LOCAL_DIAL, attempt).await {
+                Ok(done) => done.map_err(|e| e.to_string()),
+                Err(_) => Err("timed out".to_owned()),
+            }
+        } else {
+            attempt.await.map_err(|e| e.to_string())
+        }
+    };
+    let first = connect().await;
     match (first, waker) {
         (Ok(conn), _) => Ok(conn),
         (Err(first), Some(waker)) => {
             if waker.wake(addr, app).await {
-                endpoint
-                    .connect(target, &alpn)
-                    .await
-                    .map_err(|e| connect_error(addr, app, e))
+                connect().await.map_err(|e| connect_error(addr, app, e))
             } else {
                 Err(connect_error(addr, app, first))
             }
@@ -484,11 +564,25 @@ async fn dial(
     }
 }
 
-fn connect_error(addr: &PeerAddr, app: &str, e: impl std::fmt::Display) -> Error {
+/// Whether every way to reach `addr` stays inside the peer's own network: no
+/// relay, and no address that devices elsewhere could dial.
+fn only_local(addr: &PeerAddr) -> bool {
+    addr.relays.is_empty() && !addr.addrs.iter().any(is_global)
+}
+
+fn connect_error(addr: &PeerAddr, app: &str, reason: String) -> Error {
+    let reason = if only_local(addr) {
+        format!(
+            "{reason}; it has no address outside its own network and no relay, \
+             so only a device on that network can reach it"
+        )
+    } else {
+        reason
+    };
     Error::Connect {
         peer: addr.id.fmt_short(),
         app: app.to_owned(),
-        reason: e.to_string(),
+        reason,
     }
 }
 
@@ -514,7 +608,10 @@ enum Inner {
 /// again once that connection is lost.
 struct Remote {
     endpoint: Endpoint,
-    addr: PeerAddr,
+    id: PeerId,
+    /// The peer's address as last known: what it was dialed with, until the
+    /// peer tells of a change. Dialed again from here.
+    addr: watch::Sender<PeerAddr>,
     app: String,
     waker: Option<Arc<dyn Waker>>,
     max_frame: usize,
@@ -522,6 +619,9 @@ struct Remote {
     /// Held while dialing, so that requests which find the connection lost
     /// at the same time dial once between them.
     dialing: tokio::sync::Mutex<()>,
+    /// The connection whose address updates are being read, and what stops
+    /// that reading: dropped with a newer connection, or with this.
+    following: Mutex<Option<(usize, oneshot::Sender<()>)>>,
 }
 
 impl Remote {
@@ -546,7 +646,8 @@ impl Remote {
             // Another request dialed while this one waited.
             return Ok(conn);
         }
-        let conn = dial(&self.endpoint, &self.addr, &self.app, self.waker.as_deref())
+        let addr = self.addr.borrow().clone();
+        let conn = dial(&self.endpoint, &addr, &self.app, self.waker.as_deref())
             .await
             .map_err(|e| WireError::Stream(e.to_string()))?;
         *self
@@ -555,6 +656,94 @@ impl Remote {
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = conn.clone();
         Ok(conn)
     }
+
+    /// Starts reading the peer's address updates on `conn`, unless they are
+    /// read there already. `header` asks for them, with the credential of the
+    /// client whose request comes first.
+    fn follow(self: &Arc<Self>, conn: &Connection, header: Header) {
+        let mut following = lock(&self.following);
+        if following
+            .as_ref()
+            .is_some_and(|(id, _)| *id == conn.stable_id())
+        {
+            return;
+        }
+        let (stop, stopped) = oneshot::channel();
+        *following = Some((conn.stable_id(), stop));
+        tokio::spawn(read_addr_updates(
+            Arc::downgrade(self),
+            conn.clone(),
+            header,
+            self.max_frame,
+            stopped,
+        ));
+    }
+
+    /// Takes `addr` as the peer's address, if it is one.
+    fn learn(&self, addr: PeerAddr) {
+        // An empty address, say in the middle of a network change, says
+        // nothing about where the peer will be.
+        if addr.id != self.id || (addr.addrs.is_empty() && addr.relays.is_empty()) {
+            return;
+        }
+        self.addr.send_if_modified(|known| {
+            if *known == addr {
+                return false;
+            }
+            tracing::debug!(peer = %self.id.fmt_short(), ?addr, "the peer's address changed");
+            *known = addr;
+            true
+        });
+    }
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// Asks the peer on `conn` for [`ADDR_METHOD`] and keeps what it sends in
+/// `remote`, until the peer stops sending, the connection ends, or `stopped`
+/// fires. A peer from before address updates refuses the method, which ends
+/// it at once.
+async fn read_addr_updates(
+    remote: Weak<Remote>,
+    conn: Connection,
+    header: Header,
+    max_frame: usize,
+    stopped: oneshot::Receiver<()>,
+) {
+    let read = async {
+        let (mut send, mut recv) = conn
+            .open_bi()
+            .await
+            .map_err(|e| WireError::Stream(e.to_string()))?;
+        write_frame(&mut send, &header, max_frame).await?;
+        send.finish()
+            .map_err(|e| WireError::Stream(e.to_string()))?;
+        if let Reply::Err(fault) = read_frame::<Reply>(&mut recv, max_frame).await? {
+            return Err(WireError::Stream(format!("refused: {fault}")));
+        }
+        loop {
+            let update: AddrWire = read_frame(&mut recv, max_frame).await?;
+            let Some(remote) = remote.upgrade() else {
+                return Ok(());
+            };
+            match update.to_addr() {
+                Ok(addr) => remote.learn(addr),
+                Err(e) => tracing::debug!(error = %e, "an address update that does not read"),
+            }
+        }
+    };
+    tokio::select! {
+        ended = read => {
+            if let Err(e) = ended {
+                tracing::debug!(error = %e, "address updates ended");
+            }
+        }
+        _ = stopped => {}
+    }
 }
 
 impl std::fmt::Debug for Client {
@@ -562,7 +751,7 @@ impl std::fmt::Debug for Client {
         match &self.inner {
             Inner::Remote(remote) => f
                 .debug_struct("Client")
-                .field("peer", &remote.addr.id.fmt_short().to_string())
+                .field("peer", &remote.id.fmt_short().to_string())
                 .finish(),
             Inner::Local { .. } => f
                 .debug_struct("Client")
@@ -646,9 +835,40 @@ impl Client {
     /// The peer's key, or `None` when the back end is in this process.
     pub fn peer(&self) -> Option<PeerId> {
         match &self.inner {
-            Inner::Remote(remote) => Some(remote.addr.id),
+            Inner::Remote(remote) => Some(remote.id),
             Inner::Local { .. } => None,
         }
+    }
+
+    /// The back end's address as this client knows it: the one it was dialed
+    /// with, replaced whenever the back end tells of a change. A back end
+    /// tells a client its address after the client's first request, and again
+    /// whenever it changes, say when the ISP gives the home a new IP. The
+    /// client dials it from then on. Keep it, and connect to it next time.
+    /// `None` in process.
+    pub fn peer_addr(&self) -> Option<PeerAddr> {
+        match &self.inner {
+            Inner::Remote(remote) => Some(remote.addr.borrow().clone()),
+            Inner::Local { .. } => None,
+        }
+    }
+
+    /// Sees each new value of [`Client::peer_addr`], to keep it as it
+    /// changes. The receiver's `changed()` fails once every clone of this
+    /// client is gone. `None` in process.
+    pub fn peer_addr_updates(&self) -> Option<watch::Receiver<PeerAddr>> {
+        match &self.inner {
+            Inner::Remote(remote) => Some(remote.addr.subscribe()),
+            Inner::Local { .. } => None,
+        }
+    }
+
+    /// The connection for a request to a remote back end, which also starts
+    /// reading the back end's address updates there.
+    async fn connection(&self, remote: &Arc<Remote>) -> Result<Connection, WireError> {
+        let conn = remote.connection().await?;
+        remote.follow(&conn, self.header(Op::Open, ADDR_METHOD, Value::Null));
+        Ok(conn)
     }
 
     /// The path requests to a remote back end use now: direct or through a
@@ -699,8 +919,8 @@ impl Client {
                 .map_err(|e| CallError::Fault(fault_of(e))),
             Inner::Remote(remote) => {
                 let max_frame = remote.max_frame;
-                let (mut send, mut recv) = remote
-                    .connection()
+                let (mut send, mut recv) = self
+                    .connection(remote)
                     .await?
                     .open_bi()
                     .await
@@ -742,8 +962,8 @@ impl Client {
             }
             Inner::Remote(remote) => {
                 let max_frame = remote.max_frame;
-                let (mut send, mut recv) = remote
-                    .connection()
+                let (mut send, mut recv) = self
+                    .connection(remote)
                     .await?
                     .open_bi()
                     .await
@@ -775,7 +995,41 @@ struct AppHandler {
     app: Arc<str>,
     service: Arc<dyn Service>,
     authorizer: Arc<dyn Authorizer>,
+    /// This node's address, for [`ADDR_METHOD`].
+    own: watch::Receiver<PeerAddr>,
     max_frame: usize,
+}
+
+/// Where a node can be reached, kept current until the node closes: what
+/// iroh knows, plus the relays the node was told to use, which iroh lists only
+/// once it has connected to them. Held by the node's address updates instead
+/// of the endpoint itself, which would keep the node's sockets open.
+fn own_addr(endpoint: &Endpoint, relays: Arc<[RelayUrl]>) -> watch::Receiver<PeerAddr> {
+    let own = move |addr: &iroh::EndpointAddr| {
+        let mut own = PeerAddr::from_iroh(addr);
+        own.relays.extend(relays.iter().cloned());
+        own
+    };
+    let mut iroh_addr = endpoint.watch_addr();
+    let (tx, rx) = watch::channel(own(&iroh_addr.get()));
+    let closed = endpoint.closed();
+    tokio::spawn(async move {
+        let follow = async {
+            while let Ok(addr) = iroh_addr.updated().await {
+                tx.send_if_modified(|known| {
+                    let now = own(&addr);
+                    let changed = *known != now;
+                    *known = now;
+                    changed
+                });
+            }
+        };
+        tokio::select! {
+            _ = follow => {}
+            _ = closed => {}
+        }
+    });
+    rx
 }
 
 impl std::fmt::Debug for AppHandler {
@@ -843,6 +1097,9 @@ impl AppHandler {
                 return refuse(&mut send, Fault::new(FaultCode::Denied, denied.0), max).await
             }
         };
+        if header.op == Op::Open && header.method == ADDR_METHOD {
+            return self.send_addr(request, send).await;
+        }
 
         match header.op {
             Op::Call => {
@@ -878,6 +1135,44 @@ impl AppHandler {
                 }
             }
         }
+    }
+}
+
+impl AppHandler {
+    /// Serves [`ADDR_METHOD`]: this node's address now, then each change of
+    /// it, while the caller listens and its authorizer still admits it.
+    async fn send_addr(
+        &self,
+        request: AuthRequest<'_>,
+        mut send: iroh::endpoint::SendStream,
+    ) -> Result<(), WireError> {
+        let max = self.max_frame;
+        write_frame(&mut send, &Reply::Ok(Value::Null), max).await?;
+        let mut own = self.own.clone();
+        loop {
+            let now = own.borrow_and_update().clone();
+            write_frame(&mut send, &AddrWire::new(&now), max).await?;
+            // Leave as soon as the caller stops listening or the node closes;
+            // otherwise wait for a change, then a moment more, so that a
+            // burst of changes goes out as one.
+            tokio::select! {
+                changed = own.changed() => {
+                    if changed.is_err() {
+                        break;
+                    }
+                }
+                _ = send.stopped() => return Ok(()),
+            }
+            tokio::select! {
+                _ = tokio::time::sleep(ADDR_UPDATE_GAP) => {}
+                _ = send.stopped() => return Ok(()),
+            }
+            // A device unpaired meanwhile hears of no more changes.
+            if self.authorizer.authorize(request).await.is_err() {
+                break;
+            }
+        }
+        send.finish().map_err(|e| WireError::Stream(e.to_string()))
     }
 }
 

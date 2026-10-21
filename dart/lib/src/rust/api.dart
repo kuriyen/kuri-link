@@ -21,8 +21,27 @@ PeerAddr ticketBackEnd({required String ticket}) =>
 Future<LinkClient> openLocal({required String app}) =>
     KuriLinkLib.instance.api.crateApiOpenLocal(app: app);
 
+// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<BackEndUpdates>>
+abstract class BackEndUpdates implements RustOpaqueInterface {
+  /// Waits for the back end's address to change and returns the new one;
+  /// `None` once the client is gone.
+  Future<PeerAddr?> next();
+}
+
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<LinkClient>>
 abstract class LinkClient implements RustOpaqueInterface {
+  /// The back end's address as this client knows it: the one it was opened
+  /// with, replaced whenever the back end tells of a change. A back end
+  /// tells a client its address after the client's first request, and again
+  /// whenever it changes, say when the ISP gives the home a new IP; the
+  /// client dials it from then on. Keep it in place of the stored one, so
+  /// that the next launch dials it too. `None` in process.
+  PeerAddr? backEnd();
+
+  /// The changes of `back_end` from now on, one at a time: see
+  /// `BackEndUpdates::next`. `None` in process.
+  BackEndUpdates? backEndUpdates();
+
   /// Calls `method` with CBOR-encoded `args`; returns the CBOR-encoded result.
   /// Empty `args` stands for CBOR null.
   Future<Uint8List> call({required String method, required List<int> argsCbor});

@@ -314,6 +314,26 @@ impl LinkClient {
         })
     }
 
+    /// The back end's address as this client knows it: the one it was opened
+    /// with, replaced whenever the back end tells of a change. A back end
+    /// tells a client its address after the client's first request, and again
+    /// whenever it changes, say when the ISP gives the home a new IP; the
+    /// client dials it from then on. Keep it in place of the stored one, so
+    /// that the next launch dials it too. `None` in process.
+    #[frb(sync)]
+    pub fn back_end(&self) -> Option<PeerAddr> {
+        self.inner.peer_addr().as_ref().map(PeerAddr::from_core)
+    }
+
+    /// The changes of `back_end` from now on, one at a time: see
+    /// `BackEndUpdates::next`. `None` in process.
+    #[frb(sync)]
+    pub fn back_end_updates(&self) -> Option<BackEndUpdates> {
+        self.inner
+            .peer_addr_updates()
+            .map(|rx| BackEndUpdates { rx: Mutex::new(rx) })
+    }
+
     /// Calls `method` with CBOR-encoded `args`; returns the CBOR-encoded result.
     /// Empty `args` stands for CBOR null.
     pub async fn call(&self, method: String, args_cbor: Vec<u8>) -> Result<Vec<u8>, LinkError> {
@@ -332,6 +352,23 @@ impl LinkClient {
             send: Mutex::new(io.send),
             recv: Mutex::new(io.recv),
         })
+    }
+}
+
+/// Follows a remote client's `back_end`. It does not keep the client open:
+/// once the client is disposed, `next` returns `None`.
+pub struct BackEndUpdates {
+    rx: Mutex<tokio::sync::watch::Receiver<kuri_link::PeerAddr>>,
+}
+
+impl BackEndUpdates {
+    /// Waits for the back end's address to change and returns the new one;
+    /// `None` once the client is gone.
+    pub async fn next(&self) -> Option<PeerAddr> {
+        let mut rx = self.rx.lock().await;
+        rx.changed().await.ok()?;
+        let addr = PeerAddr::from_core(&rx.borrow_and_update());
+        Some(addr)
     }
 }
 

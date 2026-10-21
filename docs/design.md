@@ -45,7 +45,18 @@ open:  C→S Header{v:1, op:"open", method, args, cred?}         S→C Reply
 Reply: {"ok": <value>} | {"err": {"code": <code>, "message": <text>}}
 code:  bad_request | unsupported_version | denied | no_such_method | app
        (an unknown code decodes as `unknown`)
+addr:  C→S Header{v:1, op:"open", method:"kuri-link.addr", cred?} [FIN]
+       S→C Reply{"ok": null}, then frames {"id": bytes(32), "ip": ["addr:port", …]?,
+       "relay": ["url", …]?}: the back end's address now, then each change
 ```
+
+- **One reserved method.** Every application a back end serves answers
+  `kuri-link.addr` itself, without its service seeing it: an `open` whose
+  stream carries the back end's own address, then each change of it, at most
+  one a second. A client asks once it makes its first request, with that
+  request's credential, so the authorizer decides as for any method, and
+  decides again before each change is sent. A back end from before this method
+  answers `no_such_method`, and the client stops asking.
 
 ### Why CBOR maps with named keys
 
@@ -156,7 +167,24 @@ Turned on:
   NAT, or a second router) or `Unmapped` with the reason (mapping is off, or
   no router forwards the port). In the last two cases no direct path from
   outside exists; that is the network's shape, not a fault, and only a relay
-  closes it.
+  closes it. A front end holding only such addresses gives up after five
+  seconds instead of iroh's thirty, and says that only a device on the back
+  end's network can reach it.
+- **Its front ends learn where it is.** A back end's address still changes
+  when the ISP gives the home a new IP, or the router gives the back end a new
+  address on the home network. Its front ends learn the new address over
+  `kuri-link.addr` (see the wire format) while they are connected, and as soon
+  as they connect again; `Client::peer_addr` is what they dial from then on,
+  and what the app keeps.
+- **At home, it announces itself.** A back end announces its key and
+  addresses on the local network by mDNS (service `kuri-link`), and every node
+  looks peers up that way when it dials. So a device back on the home network
+  finds the back end whatever its address there has become. Front ends look
+  up without announcing themselves.
+- **What remains.** A device that is away from home, and not connected, while
+  the home's public IP changes does not learn the new one until it is back on
+  the home network. Nothing outside the home could tell it without a third
+  party.
 
 ## Hooks
 
@@ -168,6 +196,7 @@ Turned on:
 | `Relays` | `None` | which relays may carry traffic |
 | `port` | random | the port a back end keeps, so its public address survives restarts |
 | `port_mapping` | off | ask the home router to forward the port: an inbound port into the home |
+| `local_discovery` | on | announce and look up nodes on the local network (mDNS) |
 | `Waker` | none | wake a sleeping back end before one retry |
 
 ## Not yet
@@ -175,6 +204,5 @@ Turned on:
 - Typed Dart clients generated from Rust service definitions. Today the Dart
   side calls by method name with CBOR bytes.
 - A server-streaming helper. Today it is built on `open`.
-- Local-network discovery (mDNS). Today addresses are passed explicitly.
 - Browser front ends. These could only ever go through a relay, because browsers
   cannot open raw UDP.

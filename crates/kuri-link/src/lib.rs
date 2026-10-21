@@ -52,7 +52,9 @@ pub use hooks::{
     load_or_create_key, Allowlist, AuthRequest, Authorizer, Caller, Denied, DenyAll, Origin, Waker,
 };
 pub use local::register_local;
-pub use node::{CallError, Client, Error, Node, NodeBuilder, PathInfo, Reach, Relays, Route};
+pub use node::{
+    CallError, Client, Error, Node, NodeBuilder, PathInfo, Reach, Relays, Route, ADDR_METHOD,
+};
 pub use pairing::{PairError, PairToken, Pairing, Ticket, TicketError, PAIR_APP, PAIR_METHOD};
 pub use peers::PeerSet;
 pub use service::{from_value, to_value, AppError, Duplex, Methods, OpenHandler, Service};

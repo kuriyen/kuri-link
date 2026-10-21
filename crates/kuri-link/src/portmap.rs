@@ -540,6 +540,19 @@ pub(crate) fn is_public(addr: &SocketAddr) -> bool {
     matches!(addr, SocketAddr::V4(v4) if is_public_v4(*v4.ip()))
 }
 
+/// Whether devices elsewhere might dial `addr`: a public IPv4 address, or a
+/// global IPv6 one, which a router's firewall may or may not let through.
+pub(crate) fn is_global(addr: &SocketAddr) -> bool {
+    match addr {
+        SocketAddr::V4(v4) => is_public_v4(*v4.ip()),
+        SocketAddr::V6(v6) => {
+            let [first, second, ..] = v6.ip().segments();
+            // Global unicast is 2000::/3; 2001:db8::/32 is for documentation.
+            first & 0xe000 == 0x2000 && !(first == 0x2001 && second == 0x0db8)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
@@ -571,6 +584,22 @@ mod tests {
             "255.255.255.255",
         ] {
             assert!(!is_public_v4(ip.parse().unwrap()), "{ip} is not public");
+        }
+    }
+
+    #[test]
+    fn global_ipv6_may_be_dialed_from_elsewhere_and_local_ipv6_may_not() {
+        for addr in ["[2600:1700::1]:4", "[2a01:4f8::2]:4", "1.1.1.1:4"] {
+            assert!(is_global(&addr.parse().unwrap()), "{addr} is global");
+        }
+        for addr in [
+            "[fe80::1]:4",
+            "[fd00::1]:4",
+            "[::1]:4",
+            "[2001:db8::40]:4",
+            "192.168.1.20:4",
+        ] {
+            assert!(!is_global(&addr.parse().unwrap()), "{addr} is not global");
         }
     }
 

@@ -27,7 +27,7 @@ in [`design.md`](design.md).
 | Platform | State |
 |---|---|
 | Linux desktop, x86_64 | Works. `examples/app` builds and runs, and its integration test passes with the back end in process and in another process over loopback. |
-| Android, arm64-v8a and x86_64 | Works. `examples/app` builds for both ABIs, and has been tested on a phone (WiFi, mobile data, through a relay, switching between networks) and on the emulator. |
+| Android, arm64-v8a and x86_64 | Works. `examples/app` builds for both ABIs, and has been tested on a phone (WiFi, mobile data, through a relay, switching between networks; from outside the home with no relay, after the back end restarted and after it moved to another port) and on the emulator. |
 | macOS, iOS, Windows | Not yet. Nothing here builds or bundles the native library for them, and nothing has been tested on them. |
 | Web | Not yet. A browser cannot open raw UDP, so a web front end could only ever reach its back end through a relay. |
 
@@ -299,8 +299,10 @@ would outlive the back end, is not used.
   relay, while devices on the home network still can. Tell the user so when
   they pair, rather than letting their phone time out later.
 - **What still changes the address** is a new public IP from the ISP. The
-  back end notices within two minutes and lists the new address in
-  `node.addr()`.
+  back end notices within two minutes, and the devices connected to it learn
+  the new address at once (see "Keep the stored address current" under
+  [Pair](#5-pair)). A device that is away and not connected at that moment
+  learns it once it is back on the home network.
 
 Only IPv4 is mapped and judged. The back end's global IPv6 addresses go into
 its address as well, but whether the router's firewall lets devices outside
@@ -329,6 +331,28 @@ save(paired); // id, addrs and relays: everything needed to reach it later
 On later launches, start the node with the stored address's relays and open
 `Backend.remote(peer: stored)`; no ticket is needed again. `PeerStore` in
 `examples/app/lib/main.dart` keeps the address as JSON.
+
+**Keep the stored address current.** A back end's address can change after
+pairing: the ISP gives the home a new IP, or the router gives the back end a
+new address at home. A remote client hears of each change from the back end
+itself, after its first request and then as it happens, and dials the new
+address from then on. Store it, so the next launch dials it too:
+
+```dart
+final client = await node.openApp(
+  app: 'calc',
+  backend: Backend.remote(peer: stored),
+  credential: null,
+);
+final updates = client.backEndUpdates()!;
+for (PeerAddr? now; (now = await updates.next()) != null;) {
+  save(now!);
+}
+```
+
+`next()` returns `null` once the client is disposed, which ends the loop.
+`client.backEnd()` is the address as the client knows it now. `follow` in
+`examples/app/lib/main.dart` does this.
 
 Pairing goes one way: the back end learns the device's key, and the device
 keeps the back end's address. Two nodes that serve each other pair twice.
@@ -431,6 +455,36 @@ The full version, which also unregisters the callback, is
 On Linux iroh notices network changes by itself; calling `networkChanged()`
 there does no harm.
 
+**At home, the back end is found by mDNS.** A back end announces its key and
+addresses on the local network, and a node looks peers up there when it
+dials. So a device back on the home network finds the back end even if its
+address there changed, and learns its new public address from it. Android
+drops multicast packets before they reach an app that does not hold a
+multicast lock, so take one while the app runs, with
+`<uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>`
+in the manifest:
+
+```kotlin
+import android.net.wifi.WifiManager
+
+val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+val multicast = wifi.createMulticastLock("my_app/mdns").apply {
+    setReferenceCounted(false)
+    acquire()
+}
+// multicast.release() in cleanUpFlutterEngine.
+```
+
+`MainActivity.kt` in `examples/app` does both. In Rust,
+`NodeBuilder::local_discovery(false)` turns discovery off; a node that serves
+nothing never announces itself.
+
+**A back end only reachable at home is given up on in five seconds.** When
+none of a back end's addresses can be reached from outside its own network
+and it names no relay, a device elsewhere would wait 30 seconds for an answer
+that cannot come. It gives up after five instead, and the `LinkError` says
+that only a device on the back end's network can reach it.
+
 **A lost connection is dialed again.** When a remote client's connection is
 lost, as a phone's is when it is out of signal for longer than QUIC's idle
 timeout, the client dials again before its next request. A request already
@@ -444,8 +498,10 @@ a second, which is a quick way to see how an app behaves on a real network.
 
 ## Not yet
 
-- **No discovery.** A remote back end is reached at the addresses its ticket
-  listed, plus its relays. If its address on the local network changes and it
-  has no relay, the device cannot find it until it pairs again.
+- **A device away when the home's IP changes.** If the ISP gives the home a
+  new public IP while a device is away from home and not connected, the device
+  cannot reach the back end until it is back on the home network. Nothing
+  inside the home can reach it elsewhere to tell it, and nothing outside the
+  home knows.
 - **No typed Dart clients.** Dart calls methods by name with CBOR bytes.
 - **No macOS, iOS or Windows builds**, as above.

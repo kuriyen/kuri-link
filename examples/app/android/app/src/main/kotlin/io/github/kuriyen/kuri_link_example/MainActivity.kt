@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
+import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
 import io.flutter.embedding.android.FlutterActivity
@@ -13,8 +14,14 @@ import io.flutter.plugin.common.MethodChannel
 // Android tells Java code, not native code, when the network changes. So the
 // activity watches the default network and reports each change to Dart, which
 // passes it on to the Kuri Link node.
+//
+// It also holds a multicast lock while the app runs. Without one, Android drops
+// multicast packets before they reach the app, so the node cannot hear the
+// back end announce itself on the home network (mDNS), and cannot find it there
+// once its address changed.
 class MainActivity : FlutterActivity() {
     private var callback: ConnectivityManager.NetworkCallback? = null
+    private var multicast: WifiManager.MulticastLock? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -36,11 +43,19 @@ class MainActivity : FlutterActivity() {
         }
         connectivity().registerDefaultNetworkCallback(watch)
         callback = watch
+
+        val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        multicast = wifi.createMulticastLock(MULTICAST_LOCK).apply {
+            setReferenceCounted(false)
+            acquire()
+        }
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
         callback?.let { connectivity().unregisterNetworkCallback(it) }
         callback = null
+        multicast?.release()
+        multicast = null
         super.cleanUpFlutterEngine(flutterEngine)
     }
 
@@ -49,5 +64,6 @@ class MainActivity : FlutterActivity() {
 
     private companion object {
         const val NETWORK_CHANNEL = "kuri_link_example/network"
+        const val MULTICAST_LOCK = "kuri_link_example/mdns"
     }
 }

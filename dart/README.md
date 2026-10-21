@@ -50,6 +50,12 @@ final sum = cbor.decode(await client.call(
   stands for CBOR null.
 - `client.path()`: the path a remote client's requests use now, direct or
   through a relay, with its round-trip time; `null` in process.
+- `client.backEnd()`: the back end's address as the client knows it. A back
+  end tells its clients its address after their first request, and again
+  whenever it changes; the client dials the new one from then on.
+  `client.backEndUpdates()` follows it: each `next()` waits for a change and
+  returns the new address, to store in place of the old, or `null` once the
+  client is disposed. Both are `null` in process.
 - `client.open(method, argsCbor)`: a `LinkStream` to a method the back end
   serves with `Methods::duplex`: `write`, `finish`, `read`, `readToEnd`.
 - `client.isLocal()`.

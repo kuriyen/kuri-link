@@ -23,6 +23,7 @@ getrandom = "0.4"
 # The versions iroh's own port mapping uses, so nothing new is built.
 igd-next = { version = "0.17", features = ["aio_tokio"] }
 netwatch = "0.19"
+iroh-mdns-address-lookup = "0.6"
 serde = { version = "1", features = ["derive"] }
 serde_bytes = "0.11"
 thiserror = "2"

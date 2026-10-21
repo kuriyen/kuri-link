@@ -5,6 +5,9 @@
     <!-- MainActivity watches the default network and tells the node when it
          changes. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- To hear the back end announce itself on the home network (mDNS). A
+         normal permission, granted without a prompt. -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
     <!-- The scanner's camera and gallery plugins also ask for the microphone
          and storage, for recording video and picking pictures. Scanning uses
          neither, so the app does not ask for them. -->

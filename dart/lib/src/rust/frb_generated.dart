@@ -66,7 +66,7 @@ class KuriLinkLib
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 183981360;
+  int get rustContentHash => -868064380;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -78,6 +78,12 @@ class KuriLinkLib
 }
 
 abstract class KuriLinkLibApi extends BaseApi {
+  Future<PeerAddr?> crateApiBackEndUpdatesNext({required BackEndUpdates that});
+
+  PeerAddr? crateApiLinkClientBackEnd({required LinkClient that});
+
+  BackEndUpdates? crateApiLinkClientBackEndUpdates({required LinkClient that});
+
   Future<Uint8List> crateApiLinkClientCall({
     required LinkClient that,
     required String method,
@@ -145,6 +151,15 @@ abstract class KuriLinkLibApi extends BaseApi {
   PeerAddr crateApiTicketBackEnd({required String ticket});
 
   RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_BackEndUpdates;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_BackEndUpdates;
+
+  CrossPlatformFinalizerArg
+  get rust_arc_decrement_strong_count_BackEndUpdatesPtr;
+
+  RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_LinkClient;
 
   RustArcDecrementStrongCountFnType
@@ -179,6 +194,93 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   });
 
   @override
+  Future<PeerAddr?> crateApiBackEndUpdatesNext({required BackEndUpdates that}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 1,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_peer_addr,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiBackEndUpdatesNextConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiBackEndUpdatesNextConstMeta =>
+      const TaskConstMeta(debugName: "BackEndUpdates_next", argNames: ["that"]);
+
+  @override
+  PeerAddr? crateApiLinkClientBackEnd({required LinkClient that}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLinkClient(
+            that,
+            serializer,
+          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 2)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_peer_addr,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiLinkClientBackEndConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLinkClientBackEndConstMeta =>
+      const TaskConstMeta(debugName: "LinkClient_back_end", argNames: ["that"]);
+
+  @override
+  BackEndUpdates? crateApiLinkClientBackEndUpdates({required LinkClient that}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLinkClient(
+            that,
+            serializer,
+          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiLinkClientBackEndUpdatesConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLinkClientBackEndUpdatesConstMeta =>
+      const TaskConstMeta(
+        debugName: "LinkClient_back_end_updates",
+        argNames: ["that"],
+      );
+
+  @override
   Future<Uint8List> crateApiLinkClientCall({
     required LinkClient that,
     required String method,
@@ -197,7 +299,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 1,
+            funcId: 4,
             port: port_,
           );
         },
@@ -227,7 +329,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 2)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 5)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_bool,
@@ -262,7 +364,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 3,
+            funcId: 6,
             port: port_,
           );
         },
@@ -293,7 +395,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 7)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_opt_box_autoadd_link_path,
@@ -330,7 +432,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 5,
+            funcId: 8,
             port: port_,
           );
         },
@@ -361,7 +463,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 9)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -390,7 +492,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 10,
             port: port_,
           );
         },
@@ -432,7 +534,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 11,
             port: port_,
           );
         },
@@ -470,7 +572,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 12,
             port: port_,
           );
         },
@@ -500,7 +602,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 10)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 13)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_String,
@@ -529,7 +631,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 14,
             port: port_,
           );
         },
@@ -561,7 +663,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 15,
             port: port_,
           );
         },
@@ -595,7 +697,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 16,
             port: port_,
           );
         },
@@ -630,7 +732,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 17,
             port: port_,
           );
         },
@@ -663,7 +765,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 18,
             port: port_,
           );
         },
@@ -701,7 +803,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 19,
             port: port_,
           );
         },
@@ -731,7 +833,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 20,
             port: port_,
           );
         },
@@ -757,7 +859,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(ticket, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 18)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 21)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_peer_addr,
@@ -772,6 +874,14 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
 
   TaskConstMeta get kCrateApiTicketBackEndConstMeta =>
       const TaskConstMeta(debugName: "ticket_back_end", argNames: ["ticket"]);
+
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_BackEndUpdates => wire
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_BackEndUpdates => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates;
 
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_LinkClient => wire
@@ -796,6 +906,15 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   RustArcDecrementStrongCountFnType
   get rust_arc_decrement_strong_count_LinkStream => wire
       .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLinkStream;
+
+  @protected
+  BackEndUpdates
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return BackEndUpdatesImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
 
   @protected
   LinkClient
@@ -825,6 +944,15 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   }
 
   @protected
+  BackEndUpdates
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return BackEndUpdatesImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
   LinkClient
   dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLinkClient(
     dynamic raw,
@@ -849,6 +977,15 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return LinkStreamImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  BackEndUpdates
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return BackEndUpdatesImpl.frbInternalDcoDecode(raw as List<dynamic>);
   }
 
   @protected
@@ -901,6 +1038,17 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   bool dco_decode_bool(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as bool;
+  }
+
+  @protected
+  BackEndUpdates
+  dco_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+      raw,
+    );
   }
 
   @protected
@@ -995,6 +1143,19 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   }
 
   @protected
+  BackEndUpdates?
+  dco_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null
+        ? null
+        : dco_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+            raw,
+          );
+  }
+
+  @protected
   FaultCode? dco_decode_opt_box_autoadd_fault_code(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_fault_code(raw);
@@ -1004,6 +1165,12 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   LinkPath? dco_decode_opt_box_autoadd_link_path(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_link_path(raw);
+  }
+
+  @protected
+  PeerAddr? dco_decode_opt_box_autoadd_peer_addr(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_peer_addr(raw);
   }
 
   @protected
@@ -1050,6 +1217,18 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   }
 
   @protected
+  BackEndUpdates
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return BackEndUpdatesImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
   LinkClient
   sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLinkClient(
     SseDeserializer deserializer,
@@ -1086,6 +1265,18 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   }
 
   @protected
+  BackEndUpdates
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return BackEndUpdatesImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
   LinkClient
   sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLinkClient(
     SseDeserializer deserializer,
@@ -1116,6 +1307,18 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return LinkStreamImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  BackEndUpdates
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return BackEndUpdatesImpl.frbInternalSseDecode(
       sse_decode_usize(deserializer),
       sse_decode_i_32(deserializer),
     );
@@ -1184,6 +1387,17 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   bool sse_decode_bool(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getUint8() != 0;
+  }
+
+  @protected
+  BackEndUpdates
+  sse_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+      deserializer,
+    ));
   }
 
   @protected
@@ -1283,6 +1497,22 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   }
 
   @protected
+  BackEndUpdates?
+  sse_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+        deserializer,
+      ));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
   FaultCode? sse_decode_opt_box_autoadd_fault_code(
     SseDeserializer deserializer,
   ) {
@@ -1301,6 +1531,17 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_box_autoadd_link_path(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  PeerAddr? sse_decode_opt_box_autoadd_peer_addr(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_peer_addr(deserializer));
     } else {
       return null;
     }
@@ -1351,6 +1592,19 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
 
   @protected
   void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    BackEndUpdates self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as BackEndUpdatesImpl).frbInternalSseEncode(move: true),
+      serializer,
+    );
+  }
+
+  @protected
+  void
   sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLinkClient(
     LinkClient self,
     SseSerializer serializer,
@@ -1390,6 +1644,19 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
 
   @protected
   void
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    BackEndUpdates self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as BackEndUpdatesImpl).frbInternalSseEncode(move: false),
+      serializer,
+    );
+  }
+
+  @protected
+  void
   sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLinkClient(
     LinkClient self,
     SseSerializer serializer,
@@ -1423,6 +1690,19 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_usize(
       (self as LinkStreamImpl).frbInternalSseEncode(move: false),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    BackEndUpdates self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as BackEndUpdatesImpl).frbInternalSseEncode(move: null),
       serializer,
     );
   }
@@ -1488,6 +1768,19 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   void sse_encode_bool(bool self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putUint8(self ? 1 : 0);
+  }
+
+  @protected
+  void
+  sse_encode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    BackEndUpdates self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+      self,
+      serializer,
+    );
   }
 
   @protected
@@ -1594,6 +1887,23 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   }
 
   @protected
+  void
+  sse_encode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+    BackEndUpdates? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
+        self,
+        serializer,
+      );
+    }
+  }
+
+  @protected
   void sse_encode_opt_box_autoadd_fault_code(
     FaultCode? self,
     SseSerializer serializer,
@@ -1616,6 +1926,19 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
     sse_encode_bool(self != null, serializer);
     if (self != null) {
       sse_encode_box_autoadd_link_path(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_peer_addr(
+    PeerAddr? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_peer_addr(self, serializer);
     }
   }
 
@@ -1665,6 +1988,33 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
 }
 
 @sealed
+class BackEndUpdatesImpl extends RustOpaque implements BackEndUpdates {
+  // Not to be used by end users
+  BackEndUpdatesImpl.frbInternalDcoDecode(List<dynamic> wire)
+    : super.frbInternalDcoDecode(wire, _kStaticData);
+
+  // Not to be used by end users
+  BackEndUpdatesImpl.frbInternalSseDecode(BigInt ptr, int externalSizeOnNative)
+    : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
+
+  static final _kStaticData = RustArcStaticData(
+    rustArcIncrementStrongCount:
+        KuriLinkLib.instance.api.rust_arc_increment_strong_count_BackEndUpdates,
+    rustArcDecrementStrongCount:
+        KuriLinkLib.instance.api.rust_arc_decrement_strong_count_BackEndUpdates,
+    rustArcDecrementStrongCountPtr: KuriLinkLib
+        .instance
+        .api
+        .rust_arc_decrement_strong_count_BackEndUpdatesPtr,
+  );
+
+  /// Waits for the back end's address to change and returns the new one;
+  /// `None` once the client is gone.
+  Future<PeerAddr?> next() =>
+      KuriLinkLib.instance.api.crateApiBackEndUpdatesNext(that: this);
+}
+
+@sealed
 class LinkClientImpl extends RustOpaque implements LinkClient {
   // Not to be used by end users
   LinkClientImpl.frbInternalDcoDecode(List<dynamic> wire)
@@ -1682,6 +2032,20 @@ class LinkClientImpl extends RustOpaque implements LinkClient {
     rustArcDecrementStrongCountPtr:
         KuriLinkLib.instance.api.rust_arc_decrement_strong_count_LinkClientPtr,
   );
+
+  /// The back end's address as this client knows it: the one it was opened
+  /// with, replaced whenever the back end tells of a change. A back end
+  /// tells a client its address after the client's first request, and again
+  /// whenever it changes, say when the ISP gives the home a new IP; the
+  /// client dials it from then on. Keep it in place of the stored one, so
+  /// that the next launch dials it too. `None` in process.
+  PeerAddr? backEnd() =>
+      KuriLinkLib.instance.api.crateApiLinkClientBackEnd(that: this);
+
+  /// The changes of `back_end` from now on, one at a time: see
+  /// `BackEndUpdates::next`. `None` in process.
+  BackEndUpdates? backEndUpdates() =>
+      KuriLinkLib.instance.api.crateApiLinkClientBackEndUpdates(that: this);
 
   /// Calls `method` with CBOR-encoded `args`; returns the CBOR-encoded result.
   /// Empty `args` stands for CBOR null.

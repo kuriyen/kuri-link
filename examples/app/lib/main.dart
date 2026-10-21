@@ -150,14 +150,31 @@ class _EchoAppState extends State<EchoApp> {
 
   /// The one place the two back ends differ.
   void open() {
+    // The client opened before, if any, is done with: closing it ends its
+    // connection and its address updates.
+    client?.then((old) => old.dispose(), onError: (Object _) {});
     final Backend? backend = !remote
         ? const Backend.local()
         : peer == null
         ? null
         : Backend.remote(peer: peer!);
-    client = backend == null
+    final opening = backend == null
         ? null
         : node.openApp(app: app, backend: backend, credential: null);
+    client = opening;
+    opening?.then((opened) => follow(opening, opened), onError: (Object _) {});
+  }
+
+  /// Keeps the stored address in step with what the back end tells the
+  /// client, so that the next launch dials the back end where it is now.
+  Future<void> follow(Future<LinkClient> opening, LinkClient opened) async {
+    final updates = opened.backEndUpdates();
+    if (updates == null) return;
+    for (PeerAddr? now; (now = await updates.next()) != null;) {
+      if (!mounted || !identical(opening, client)) return;
+      widget.store.save(now);
+      setState(() => peer = now);
+    }
   }
 
   /// Fills in the ticket from the back end's QR code, then pairs.
