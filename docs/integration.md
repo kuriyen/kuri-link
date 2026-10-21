@@ -38,8 +38,8 @@ same one in Cargo and in pub:
 
 ```toml
 [dependencies]
-kuri-link = { git = "https://github.com/kuriyen/kuri-link", tag = "v0.1.1" }
-kuri-link-ffi = { git = "https://github.com/kuriyen/kuri-link", tag = "v0.1.1" }
+kuri-link = { git = "https://github.com/kuriyen/kuri-link", tag = "v0.1.2" }
+kuri-link-ffi = { git = "https://github.com/kuriyen/kuri-link", tag = "v0.1.2" }
 ```
 
 ```yaml
@@ -48,7 +48,7 @@ dependencies:
     git:
       url: https://github.com/kuriyen/kuri-link
       path: dart
-      ref: v0.1.1
+      ref: v0.1.2
 ```
 
 The Dart package's generated code and the Rust side each carry a hash of the
@@ -56,11 +56,6 @@ API they were generated from, and `KuriLinkLib.init` fails when the two
 differ. So Cargo and pub must name the same version. Both sides also pin
 flutter_rust_bridge to exactly 2.13.0; an app cannot use another version of it
 alongside Kuri Link.
-
-Two changes on `main` came after 0.1.1, and this guide marks them where they
-come up: a client dials again once its connection is lost, and
-`LinkNode.networkChanged()`. To use them before the next release, pin Cargo
-(`rev = "<commit>"`) and pub (`ref: <commit>`) to the same commit.
 
 The compatibility promise is in [`CHANGELOG.md`](../CHANGELOG.md): from 0.1.0
 on, peers that speak wire format 1 keep working together across releases, so
@@ -382,15 +377,13 @@ const MethodChannel('my_app/network')
 The full version, which also unregisters the callback, is
 `examples/app/android/app/src/main/kotlin/io/github/kuriyen/kuri_link_example/MainActivity.kt`.
 On Linux iroh notices network changes by itself; calling `networkChanged()`
-there does no harm. (`networkChanged()` came after 0.1.1.)
+there does no harm.
 
 **A lost connection is dialed again.** When a remote client's connection is
 lost, as a phone's is when it is out of signal for longer than QUIC's idle
 timeout, the client dials again before its next request. A request already
 under way when the connection is lost fails and is not sent again, since it
 may already have taken effect; whether to retry it is the app's decision.
-(This came after 0.1.1. In 0.1.1, every later request fails until the app
-opens the application again with `openApp`.)
 
 `client.path()` reports the path requests use now, `LinkRoute.direct` or
 `LinkRoute.relay`, with its round-trip time; it is `null` in process and while

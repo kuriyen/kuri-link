@@ -19,7 +19,12 @@ depend on a tag.
   `KURI-LINK:` followed by base32. Peer files and tickets written by 0.1.0 still
   read in later releases.
 
-## Unreleased
+## 0.1.2 — 2026-10-20
+
+Upgrade if your app talks to a back end on another device: a client whose
+connection is lost now dials again by itself, and an Android app can tell its
+node that the network changed. Both were tested on a phone, over WiFi, mobile
+data and the switch between them. The rest only adds to the API.
 
 ### `kuri-link`
 
@@ -44,6 +49,10 @@ depend on a tag.
 
 - On Android, the app watches the default network in `MainActivity` and calls
   `networkChanged()` when it changes.
+
+### Documentation
+
+- `docs/integration.md`, a step-by-step guide to using Kuri Link in an app.
 
 ## 0.1.1 — 2026-10-17
 

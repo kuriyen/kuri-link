@@ -75,8 +75,8 @@ So an app builds one library from its own crate:
 crate-type = ["cdylib"]
 
 [dependencies]
-kuri-link = { git = "https://github.com/kuriyen/kuri-link", tag = "v0.1.1" }
-kuri-link-ffi = { git = "https://github.com/kuriyen/kuri-link", tag = "v0.1.1" }
+kuri-link = { git = "https://github.com/kuriyen/kuri-link", tag = "v0.1.2" }
+kuri-link-ffi = { git = "https://github.com/kuriyen/kuri-link", tag = "v0.1.2" }
 ```
 
 with the Dart package from the same tag:
@@ -87,7 +87,7 @@ dependencies:
     git:
       url: https://github.com/kuriyen/kuri-link
       path: dart
-      ref: v0.1.1
+      ref: v0.1.2
 ```
 
 ```rust
