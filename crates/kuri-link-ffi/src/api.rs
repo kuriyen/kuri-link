@@ -122,6 +122,8 @@ pub enum FaultCode {
     MethodNotFound,
     /// The method ran and failed.
     App,
+    /// A gateway answered, and no back end serves the app there now.
+    Unavailable,
     /// A code from a newer back end.
     Unknown,
 }
@@ -134,7 +136,8 @@ impl From<kuri_link::FaultCode> for FaultCode {
             kuri_link::FaultCode::Denied => FaultCode::Denied,
             kuri_link::FaultCode::NoSuchMethod => FaultCode::MethodNotFound,
             kuri_link::FaultCode::App => FaultCode::App,
-            kuri_link::FaultCode::Unknown => FaultCode::Unknown,
+            kuri_link::FaultCode::Unavailable => FaultCode::Unavailable,
+            _ => FaultCode::Unknown,
         }
     }
 }

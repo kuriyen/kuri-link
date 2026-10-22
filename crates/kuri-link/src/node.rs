@@ -14,10 +14,12 @@ use serde::Serialize;
 use tokio::sync::{oneshot, watch};
 
 use crate::addr::{AddrWire, NodeKey, PeerAddr, PeerId, RelayUrl};
+use crate::gateway::{Acceptor, Gateway, GATEWAY_APP};
 use crate::hooks::{AuthRequest, Authorizer, Caller, DenyAll, Origin, Waker};
 use crate::pairing::{Pairing, PAIR_APP};
 use crate::portmap::{is_global, is_public, PortMapper};
 use crate::service::{from_value, to_value, AppError, Duplex, Service};
+use crate::uplink::{Registration, Uplink};
 use crate::wire::{
     read_frame, write_frame, Fault, FaultCode, Header, Op, Reply, WireError, DEFAULT_MAX_FRAME,
     WIRE_VERSION,
@@ -95,8 +97,9 @@ pub enum CallError {
     Decode(String),
 }
 
-/// An application a node serves: its name, its service, and who may call it.
-type Served = (Arc<str>, Arc<dyn Service>, Arc<dyn Authorizer>);
+/// An application a node serves: its name, what answers it, and who may call
+/// it.
+type Served = (Arc<str>, Target, Arc<dyn Authorizer>);
 
 /// Configures and binds a [`Node`].
 pub struct NodeBuilder {
@@ -113,6 +116,8 @@ pub struct NodeBuilder {
     pairing: Option<Pairing>,
     waker: Option<Arc<dyn Waker>>,
     apps: Vec<(String, Arc<dyn Service>)>,
+    gateway: Option<Gateway>,
+    behind: Option<PeerAddr>,
     max_frame: usize,
 }
 
@@ -131,6 +136,8 @@ impl Default for NodeBuilder {
             pairing: None,
             waker: None,
             apps: Vec::new(),
+            gateway: None,
+            behind: None,
             max_frame: DEFAULT_MAX_FRAME,
         }
     }
@@ -237,12 +244,55 @@ impl NodeBuilder {
         self
     }
 
+    /// Makes this node its home's gateway: front ends reach every
+    /// application that `gateway`'s back ends register through this node, as
+    /// if this node served it.
+    ///
+    /// The node also serves [`GATEWAY_APP`], the door where back ends pair,
+    /// through [`Gateway::pairing`], and register. Front ends are authorized
+    /// here, by [`NodeBuilder::authorizer`] or [`NodeBuilder::pairing`] as for
+    /// any application, and a back end sees the caller this node vouches for.
+    /// The node may still serve applications of its own, whose names no back
+    /// end can register.
+    pub fn gateway(mut self, gateway: Gateway) -> Self {
+        self.gateway = Some(gateway);
+        self
+    }
+
+    /// Serves this node's applications through the gateway at `gateway`
+    /// instead of listening for connections.
+    ///
+    /// The node dials the gateway, registers its applications there, and
+    /// answers the requests the gateway forwards on that connection; it
+    /// accepts no connection of its own. It must have paired with the gateway
+    /// first ([`Node::pair_gateway`]). If the connection is lost, or the
+    /// gateway refuses, the node dials again, waiting longer each time, up to
+    /// half a minute; [`Node::registration`] says where it stands, and
+    /// [`Node::gateway_addr`] is the gateway's address as it last heard.
+    ///
+    /// A forwarded request's [`Caller`] is the front end the gateway
+    /// vouches for, with the gateway's claims. With
+    /// [`NodeBuilder::authorizer`], that authorizer decides as well, and its
+    /// caller is the one the service sees.
+    pub fn behind_gateway(mut self, gateway: PeerAddr) -> Self {
+        self.behind = Some(gateway);
+        self
+    }
+
     pub fn max_frame(mut self, bytes: usize) -> Self {
         self.max_frame = bytes;
         self
     }
 
     pub async fn bind(self) -> Result<Node, Error> {
+        if self.behind.is_some() && (self.gateway.is_some() || self.pairing.is_some()) {
+            return Err(Error::Bind(
+                "a node behind a gateway pairs no devices and is no gateway itself; \
+                 the gateway does both"
+                    .into(),
+            ));
+        }
+        let own_authorizer = self.authorizer.clone();
         let authorizer: Arc<dyn Authorizer> = match (self.authorizer, &self.pairing) {
             (Some(authorizer), _) => authorizer,
             (None, Some(pairing)) => Arc::new(pairing.peers().clone()),
@@ -261,11 +311,20 @@ impl NodeBuilder {
                 )));
             }
         }
-        let mut apps: Vec<Served> = self
-            .apps
-            .into_iter()
-            .map(|(app, service)| (app.into(), service, authorizer.clone()))
-            .collect();
+        // Behind a gateway, the applications are served over the connection
+        // to it instead.
+        let (mut apps, uplink_apps): (Vec<Served>, _) = match self.behind {
+            Some(_) => (Vec::new(), self.apps),
+            None => (
+                self.apps
+                    .into_iter()
+                    .map(|(app, service)| {
+                        (app.into(), Target::Service(service), authorizer.clone())
+                    })
+                    .collect(),
+                Vec::new(),
+            ),
+        };
         if let Some(pairing) = self.pairing {
             if apps.iter().any(|(app, _, _)| &**app == PAIR_APP) {
                 return Err(Error::Bind(format!(
@@ -274,8 +333,22 @@ impl NodeBuilder {
             }
             apps.push((
                 PAIR_APP.into(),
-                Arc::new(pairing.service()),
+                Target::Service(Arc::new(pairing.service())),
                 Arc::new(pairing),
+            ));
+        }
+        if let Some(gateway) = &self.gateway {
+            if apps.iter().any(|(app, _, _)| &**app == GATEWAY_APP) {
+                return Err(Error::Bind(format!(
+                    "the application name {GATEWAY_APP:?} is reserved for a gateway's back ends"
+                )));
+            }
+            gateway.serve_locally(apps.iter().map(|(app, _, _)| app.to_string()));
+            let back_ends = gateway.pairing().clone();
+            apps.push((
+                GATEWAY_APP.into(),
+                Target::Door(Arc::new(back_ends.service()), gateway.clone()),
+                Arc::new(back_ends),
             ));
         }
         let serves = !apps.is_empty();
@@ -374,28 +447,60 @@ impl NodeBuilder {
             None
         };
 
-        let router = if serves {
+        let (mut router, mut acceptor) = (None, None);
+        if serves {
             let own = own_addr(&endpoint, configured_relays);
-            let mut router = Router::builder(endpoint.clone());
-            for (app, service, authorizer) in apps {
-                let alpn = crate::alpn(&app);
-                let handler = AppHandler {
+            let handlers: Vec<AppHandler> = apps
+                .into_iter()
+                .map(|(app, target, authorizer)| AppHandler {
                     app,
-                    service,
+                    target,
                     authorizer,
                     own: own.clone(),
                     max_frame,
-                };
-                router = router.accept(alpn, handler);
+                })
+                .collect();
+            match self.gateway {
+                Some(gateway) => {
+                    // What answers each application a back end registers.
+                    let forward = AppHandler {
+                        app: "".into(),
+                        target: Target::Forward(gateway.clone()),
+                        authorizer,
+                        own,
+                        max_frame,
+                    };
+                    acceptor = Some(Acceptor::spawn(
+                        endpoint.clone(),
+                        gateway,
+                        handlers,
+                        forward,
+                    ));
+                }
+                None => {
+                    let mut builder = Router::builder(endpoint.clone());
+                    for handler in handlers {
+                        builder = builder.accept(crate::alpn(&handler.app), handler);
+                    }
+                    router = Some(builder.spawn());
+                }
             }
-            Some(router.spawn())
-        } else {
-            None
-        };
+        }
+        let uplink = self.behind.map(|gateway| {
+            Uplink::spawn(
+                endpoint.clone(),
+                gateway,
+                uplink_apps,
+                own_authorizer,
+                max_frame,
+            )
+        });
 
         Ok(Node {
             endpoint,
             router,
+            acceptor,
+            uplink,
             mapper,
             unmapped,
             iroh_maps,
@@ -410,6 +515,10 @@ impl NodeBuilder {
 pub struct Node {
     endpoint: Endpoint,
     router: Option<Router>,
+    /// Accepts a gateway's connections, in place of a router.
+    acceptor: Option<Acceptor>,
+    /// A back end's connection to its gateway.
+    pub(crate) uplink: Option<Uplink>,
     /// Keeps a back end's port forwarded by the router.
     mapper: Option<PortMapper>,
     /// Why no port is forwarded, when there is no mapper.
@@ -536,24 +645,40 @@ impl Node {
         self.endpoint.network_change().await;
     }
 
+    /// Where this node stands with its gateway, as it changes: `None` unless
+    /// it was built [`behind_gateway`](NodeBuilder::behind_gateway).
+    pub fn registration(&self) -> Option<watch::Receiver<Registration>> {
+        self.uplink.as_ref().map(Uplink::registration)
+    }
+
+    /// The gateway's address as this node last heard it, and its changes:
+    /// the gateway tells a registered back end its address and each change,
+    /// so keep it and build the node with it next time. `None` unless the
+    /// node was built [`behind_gateway`](NodeBuilder::behind_gateway).
+    pub fn gateway_addr(&self) -> Option<watch::Receiver<PeerAddr>> {
+        self.uplink.as_ref().map(Uplink::gateway_addr)
+    }
+
     /// Stops serving, asks the router to stop forwarding the node's port, and
     /// closes the endpoint.
     pub async fn shutdown(self) {
         if let Some(mapper) = self.mapper {
             mapper.release().await;
         }
-        match self.router {
-            Some(router) => {
+        drop(self.uplink);
+        match (self.router, self.acceptor) {
+            (Some(router), _) => {
                 let _ = router.shutdown().await;
             }
-            None => self.endpoint.close().await,
+            (None, Some(acceptor)) => acceptor.shutdown().await,
+            (None, None) => self.endpoint.close().await,
         }
     }
 }
 
 /// Connects to `app` at `addr`. On failure, `waker` gets one chance to wake
 /// the peer before a single retry.
-async fn dial(
+pub(crate) async fn dial(
     endpoint: &Endpoint,
     addr: &PeerAddr,
     app: &str,
@@ -720,7 +845,7 @@ impl Remote {
     }
 }
 
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -923,13 +1048,7 @@ impl Client {
     }
 
     fn header(&self, op: Op, method: &str, args: Value) -> Header {
-        Header {
-            v: WIRE_VERSION,
-            op,
-            method: method.to_owned(),
-            args,
-            cred: self.credential.clone().map(serde_bytes::ByteBuf::from),
-        }
+        Header::new(op, method, args, self.credential.clone())
     }
 
     /// Sends `args` to `method` and waits for its single reply.
@@ -1012,15 +1131,27 @@ fn in_process_caller() -> Caller {
 }
 
 /// Serves one application: accepts streams, authorizes each request, and
-/// dispatches it to the service.
+/// dispatches it.
 #[derive(Clone)]
-struct AppHandler {
-    app: Arc<str>,
-    service: Arc<dyn Service>,
-    authorizer: Arc<dyn Authorizer>,
+pub(crate) struct AppHandler {
+    pub(crate) app: Arc<str>,
+    pub(crate) target: Target,
+    pub(crate) authorizer: Arc<dyn Authorizer>,
     /// This node's address, for [`ADDR_METHOD`].
-    own: watch::Receiver<PeerAddr>,
-    max_frame: usize,
+    pub(crate) own: watch::Receiver<PeerAddr>,
+    pub(crate) max_frame: usize,
+}
+
+/// What answers an application's requests.
+#[derive(Clone)]
+pub(crate) enum Target {
+    /// A service in this process.
+    Service(Arc<dyn Service>),
+    /// A gateway's door for back ends: pairing, which this service answers,
+    /// and registering.
+    Door(Arc<dyn Service>, Gateway),
+    /// The back end that registered the application with this gateway.
+    Forward(Gateway),
 }
 
 /// Where a node can be reached, kept current until the node closes: what
@@ -1068,8 +1199,9 @@ impl ProtocolHandler for AppHandler {
         let peer = PeerId::from_iroh(conn.remote_id());
         while let Ok((send, recv)) = conn.accept_bi().await {
             let this = self.clone();
+            let conn = conn.clone();
             tokio::spawn(async move {
-                if let Err(e) = this.serve_stream(peer, send, recv).await {
+                if let Err(e) = this.serve_stream(peer, &conn, send, recv).await {
                     tracing::debug!(app = %this.app, peer = %peer.fmt_short(), error = %e, "request failed");
                 }
             });
@@ -1082,31 +1214,14 @@ impl AppHandler {
     async fn serve_stream(
         &self,
         peer: PeerId,
+        conn: &Connection,
         mut send: iroh::endpoint::SendStream,
         mut recv: iroh::endpoint::RecvStream,
     ) -> Result<(), WireError> {
         let max = self.max_frame;
-        let header: Header = match read_frame(&mut recv, max).await {
-            Ok(header) => header,
-            Err(e) => {
-                return refuse(
-                    &mut send,
-                    Fault::new(FaultCode::BadRequest, e.to_string()),
-                    max,
-                )
-                .await;
-            }
+        let Some(header) = read_header(&mut send, &mut recv, max).await? else {
+            return Ok(());
         };
-        if header.v != WIRE_VERSION {
-            let fault = Fault::new(
-                FaultCode::UnsupportedVersion,
-                format!(
-                    "wire version {} (this server speaks {WIRE_VERSION})",
-                    header.v
-                ),
-            );
-            return refuse(&mut send, fault, max).await;
-        }
 
         let request = AuthRequest {
             peer,
@@ -1121,58 +1236,106 @@ impl AppHandler {
             }
         };
         if header.op == Op::Open && header.method == ADDR_METHOD {
-            return self.send_addr(request, send).await;
+            return self.send_addr(request, send, std::future::pending()).await;
+        }
+        if let Target::Door(_, gateway) = &self.target {
+            if header.op == Op::Open && header.method == crate::gateway::REGISTER_METHOD {
+                return gateway.register(self, peer, conn, header.args, send).await;
+            }
         }
         if header.method.starts_with(RESERVED_PREFIX) {
             let fault = fault_of(AppError::NoSuchMethod(header.method));
             return refuse(&mut send, fault, max).await;
         }
 
-        match header.op {
-            Op::Call => {
-                let reply = match self
-                    .service
-                    .clone()
-                    .call(caller, header.method, header.args)
-                    .await
-                {
-                    Ok(value) => Reply::Ok(value),
-                    Err(e) => Reply::Err(fault_of(e)),
-                };
-                write_frame(&mut send, &reply, max).await?;
-                send.finish().map_err(|e| WireError::Stream(e.to_string()))
+        match &self.target {
+            Target::Service(service) | Target::Door(service, _) => {
+                dispatch(service.clone(), caller, header, send, recv, max).await
             }
-            Op::Open => {
-                match self
-                    .service
-                    .clone()
-                    .accept_open(caller, header.method, header.args)
+            Target::Forward(gateway) => {
+                gateway
+                    .forward(&self.app, caller, header, send, recv, max)
                     .await
-                {
-                    Ok(run) => {
-                        write_frame(&mut send, &Reply::Ok(Value::Null), max).await?;
-                        run(Duplex {
-                            send: Box::new(send),
-                            recv: Box::new(recv),
-                        })
-                        .await;
-                        Ok(())
-                    }
-                    Err(e) => refuse(&mut send, fault_of(e), max).await,
-                }
             }
         }
     }
 }
 
+/// Reads a request's header, or answers the fault that keeps it from being
+/// read and returns `None`.
+pub(crate) async fn read_header(
+    send: &mut iroh::endpoint::SendStream,
+    recv: &mut iroh::endpoint::RecvStream,
+    max: usize,
+) -> Result<Option<Header>, WireError> {
+    let header: Header = match read_frame(recv, max).await {
+        Ok(header) => header,
+        Err(e) => {
+            refuse(send, Fault::new(FaultCode::BadRequest, e.to_string()), max).await?;
+            return Ok(None);
+        }
+    };
+    if header.v != WIRE_VERSION {
+        let fault = Fault::new(
+            FaultCode::UnsupportedVersion,
+            format!(
+                "wire version {} (this server speaks {WIRE_VERSION})",
+                header.v
+            ),
+        );
+        refuse(send, fault, max).await?;
+        return Ok(None);
+    }
+    Ok(Some(header))
+}
+
+/// Runs an authorized request on `service` and answers it.
+pub(crate) async fn dispatch(
+    service: Arc<dyn Service>,
+    caller: Caller,
+    header: Header,
+    mut send: iroh::endpoint::SendStream,
+    recv: iroh::endpoint::RecvStream,
+    max: usize,
+) -> Result<(), WireError> {
+    match header.op {
+        Op::Call => {
+            let reply = match service.call(caller, header.method, header.args).await {
+                Ok(value) => Reply::Ok(value),
+                Err(e) => Reply::Err(fault_of(e)),
+            };
+            write_frame(&mut send, &reply, max).await?;
+            send.finish().map_err(|e| WireError::Stream(e.to_string()))
+        }
+        Op::Open => match service
+            .accept_open(caller, header.method, header.args)
+            .await
+        {
+            Ok(run) => {
+                write_frame(&mut send, &Reply::Ok(Value::Null), max).await?;
+                run(Duplex {
+                    send: Box::new(send),
+                    recv: Box::new(recv),
+                })
+                .await;
+                Ok(())
+            }
+            Err(e) => refuse(&mut send, fault_of(e), max).await,
+        },
+    }
+}
+
 impl AppHandler {
     /// Serves [`ADDR_METHOD`]: this node's address now, then each change of
-    /// it, while the caller listens and its authorizer still admits it.
-    async fn send_addr(
+    /// it, while the caller listens, its authorizer still admits it, and
+    /// `until` has not finished.
+    pub(crate) async fn send_addr(
         &self,
         request: AuthRequest<'_>,
         mut send: iroh::endpoint::SendStream,
+        until: impl std::future::Future<Output = ()>,
     ) -> Result<(), WireError> {
+        tokio::pin!(until);
         let max = self.max_frame;
         write_frame(&mut send, &Reply::Ok(Value::Null), max).await?;
         let mut own = self.own.clone();
@@ -1189,10 +1352,12 @@ impl AppHandler {
                     }
                 }
                 _ = send.stopped() => return Ok(()),
+                _ = &mut until => break,
             }
             tokio::select! {
                 _ = tokio::time::sleep(ADDR_UPDATE_GAP) => {}
                 _ = send.stopped() => return Ok(()),
+                _ = &mut until => break,
             }
             // A device unpaired meanwhile hears of no more changes.
             if self.authorizer.authorize(request).await.is_err() {
@@ -1203,7 +1368,7 @@ impl AppHandler {
     }
 }
 
-async fn refuse(
+pub(crate) async fn refuse(
     send: &mut iroh::endpoint::SendStream,
     fault: Fault,
     max: usize,
@@ -1212,7 +1377,7 @@ async fn refuse(
     send.finish().map_err(|e| WireError::Stream(e.to_string()))
 }
 
-fn fault_of(e: AppError) -> Fault {
+pub(crate) fn fault_of(e: AppError) -> Fault {
     match e {
         AppError::NoSuchMethod(m) => Fault::new(FaultCode::NoSuchMethod, m),
         AppError::BadArgs(m) => Fault::new(FaultCode::BadRequest, m),

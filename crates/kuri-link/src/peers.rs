@@ -9,6 +9,7 @@ use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::addr::PeerId;
 use ciborium::Value;
+use tokio::sync::watch;
 
 use crate::hooks::{AuthRequest, Authorizer, Caller, Denied, Origin};
 use crate::BoxFuture;
@@ -26,9 +27,21 @@ use crate::BoxFuture;
 ///
 /// As an [`Authorizer`] it admits exactly its members, re-checked on every
 /// request: a peer removed while connected is refused from its next request.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct PeerSet {
     inner: Arc<RwLock<Inner>>,
+    /// Counts the changes, for code that must act as soon as a peer leaves,
+    /// such as a gateway whose back end is unpaired.
+    changes: Arc<watch::Sender<u64>>,
+}
+
+impl Default for PeerSet {
+    fn default() -> Self {
+        PeerSet {
+            inner: Arc::default(),
+            changes: Arc::new(watch::Sender::new(0)),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -59,6 +72,7 @@ impl PeerSet {
                 peers,
                 file: Some(path),
             })),
+            ..PeerSet::default()
         })
     }
 
@@ -93,6 +107,7 @@ impl PeerSet {
             inner.peers.remove(&peer);
             return Err(e);
         }
+        self.changed();
         Ok(true)
     }
 
@@ -107,8 +122,18 @@ impl PeerSet {
         if !inner.peers.remove(peer) {
             return Ok(false);
         }
+        self.changed();
         inner.persist()?;
         Ok(true)
+    }
+
+    /// Sees each change to the set.
+    pub(crate) fn changes(&self) -> watch::Receiver<u64> {
+        self.changes.subscribe()
+    }
+
+    fn changed(&self) {
+        self.changes.send_modify(|count| *count += 1);
     }
 
     fn read(&self) -> RwLockReadGuard<'_, Inner> {
@@ -181,7 +206,7 @@ fn parse(text: &str) -> io::Result<BTreeSet<PeerId>> {
 
 /// Writes `bytes` beside `path`, then renames over it, so a reader sees the
 /// old file or the new one and never half of either.
-fn write_atomically(path: &Path, bytes: &[u8]) -> io::Result<()> {
+pub(crate) fn write_atomically(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let mut tmp = path.as_os_str().to_owned();
     tmp.push(".tmp");
     let tmp = PathBuf::from(tmp);

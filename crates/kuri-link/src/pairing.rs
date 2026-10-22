@@ -16,6 +16,7 @@ use ciborium::Value;
 use serde::{Deserialize, Serialize};
 
 use crate::addr::PeerAddr;
+use crate::gateway::GATEWAY_APP;
 use crate::hooks::{AuthRequest, Authorizer, Caller, Denied, Origin};
 use crate::node::{CallError, Error, Node};
 use crate::peers::PeerSet;
@@ -157,14 +158,22 @@ impl FromStr for Ticket {
 pub struct Pairing {
     peers: PeerSet,
     tokens: Arc<Mutex<HashMap<PairToken, Instant>>>,
+    /// The application whose method `pair` redeems a ticket: [`PAIR_APP`],
+    /// or a gateway's own door for back ends.
+    door: &'static str,
 }
 
 impl Pairing {
     /// Pairing that adds each redeemed ticket's holder to `peers`.
     pub fn new(peers: PeerSet) -> Self {
+        Pairing::with_door(peers, PAIR_APP)
+    }
+
+    pub(crate) fn with_door(peers: PeerSet, door: &'static str) -> Self {
         Pairing {
             peers,
             tokens: Arc::default(),
+            door,
         }
     }
 
@@ -232,7 +241,7 @@ impl Authorizer for Pairing {
     fn authorize<'a>(&'a self, req: AuthRequest<'a>) -> BoxFuture<'a, Result<Caller, Denied>> {
         // Presented at the pairing door, a token is spent whatever happens
         // next, so one ticket can never admit a second device.
-        let redeemed = req.app == PAIR_APP
+        let redeemed = req.app == self.door
             && req.method == PAIR_METHOD
             && req.credential.is_some_and(|token| self.redeem(token));
         let admitted = redeemed || self.peers.contains(&req.peer);
@@ -304,8 +313,27 @@ impl Node {
     /// admits this node's key. Returns the back end's address, to keep and
     /// pass to [`Node::connect`] later.
     pub async fn pair(&self, ticket: &Ticket) -> Result<PeerAddr, PairError> {
+        self.redeem(ticket, PAIR_APP).await
+    }
+
+    /// Redeems `ticket`, which a gateway's [`Gateway::pairing`] issued, so
+    /// that the gateway admits this node as a back end. Returns the gateway's
+    /// address, to keep and pass to
+    /// [`NodeBuilder::behind_gateway`](crate::NodeBuilder::behind_gateway).
+    /// A node built behind that gateway already dials it again at once.
+    ///
+    /// [`Gateway::pairing`]: crate::Gateway::pairing
+    pub async fn pair_gateway(&self, ticket: &Ticket) -> Result<PeerAddr, PairError> {
+        let gateway = self.redeem(ticket, GATEWAY_APP).await?;
+        if let Some(uplink) = &self.uplink {
+            uplink.retry();
+        }
+        Ok(gateway)
+    }
+
+    async fn redeem(&self, ticket: &Ticket, door: &str) -> Result<PeerAddr, PairError> {
         let client = self
-            .connect(ticket.addr.clone(), PAIR_APP)
+            .connect(ticket.addr.clone(), door)
             .await?
             .with_credential(ticket.token.as_bytes().to_vec());
         client.call(PAIR_METHOD, Value::Null).await?;

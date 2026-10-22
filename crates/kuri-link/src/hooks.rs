@@ -44,6 +44,8 @@ pub fn load_or_create_key(path: &Path) -> io::Result<NodeKey> {
 pub struct AuthRequest<'a> {
     /// The caller's key, proven during the QUIC/TLS handshake. Not a claim:
     /// the connection could not exist unless the peer holds the private half.
+    /// On a back end behind a gateway, it is the key the gateway proved and
+    /// vouches for.
     pub peer: PeerId,
     /// The application the connection was opened for.
     pub app: &'a str,
@@ -59,7 +61,8 @@ pub enum Origin {
     /// The back end is linked into the same process as the caller. No network,
     /// no key: the trust boundary is the process itself, so no authorizer runs.
     InProcess,
-    /// A peer, identified by the key it proved during the handshake.
+    /// A peer, identified by the key it proved during the handshake, or, on
+    /// a back end behind a gateway, by the key the gateway vouches for.
     Peer(PeerId),
 }
 

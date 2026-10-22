@@ -1258,7 +1258,8 @@ impl SseDecode for crate::api::FaultCode {
             2 => crate::api::FaultCode::Denied,
             3 => crate::api::FaultCode::MethodNotFound,
             4 => crate::api::FaultCode::App,
-            5 => crate::api::FaultCode::Unknown,
+            5 => crate::api::FaultCode::Unavailable,
+            6 => crate::api::FaultCode::Unknown,
             _ => unreachable!("Invalid variant for FaultCode: {}", inner),
         };
     }
@@ -1582,7 +1583,8 @@ impl flutter_rust_bridge::IntoDart for crate::api::FaultCode {
             Self::Denied => 2.into_dart(),
             Self::MethodNotFound => 3.into_dart(),
             Self::App => 4.into_dart(),
-            Self::Unknown => 5.into_dart(),
+            Self::Unavailable => 5.into_dart(),
+            Self::Unknown => 6.into_dart(),
             _ => unreachable!(),
         }
     }
@@ -1779,7 +1781,8 @@ impl SseEncode for crate::api::FaultCode {
                 crate::api::FaultCode::Denied => 2,
                 crate::api::FaultCode::MethodNotFound => 3,
                 crate::api::FaultCode::App => 4,
-                crate::api::FaultCode::Unknown => 5,
+                crate::api::FaultCode::Unavailable => 5,
+                crate::api::FaultCode::Unknown => 6,
                 _ => {
                     unimplemented!("");
                 }

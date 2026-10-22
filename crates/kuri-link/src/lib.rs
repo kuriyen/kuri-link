@@ -29,10 +29,15 @@
 //!   end's address and a short-lived token, as text a QR code carries. A front
 //!   end redeems one with [`Node::pair`], and the back end adds the key the
 //!   handshake proved to a [`PeerSet`], which can be kept in a file.
+//! - **One gateway for a home.** A node with a [`Gateway`] pairs the phones
+//!   once and forwards each request to the back end that registered its
+//!   application. Back ends dial out to it
+//!   ([`NodeBuilder::behind_gateway`]) and listen for nothing.
 //!
 //! See `docs/design.md` for the wire format and the reasoning.
 
 mod addr;
+mod gateway;
 mod hooks;
 mod local;
 mod node;
@@ -40,6 +45,7 @@ mod pairing;
 mod peers;
 mod portmap;
 mod service;
+mod uplink;
 mod wire;
 
 use std::future::Future;
@@ -47,6 +53,8 @@ use std::pin::Pin;
 
 pub use addr::{NodeKey, ParseError, PeerAddr, PeerId, RelayUrl};
 pub use ciborium::Value;
+
+pub use gateway::{Gateway, GatewayApp, GATEWAY_APP, REGISTER_METHOD};
 
 pub use hooks::{
     load_or_create_key, Allowlist, AuthRequest, Authorizer, Caller, Denied, DenyAll, Origin, Waker,
@@ -59,6 +67,7 @@ pub use node::{
 pub use pairing::{PairError, PairToken, Pairing, Ticket, TicketError, PAIR_APP, PAIR_METHOD};
 pub use peers::PeerSet;
 pub use service::{from_value, to_value, AppError, Duplex, Methods, OpenHandler, Service};
+pub use uplink::Registration;
 pub use wire::{Fault, FaultCode, WireError, DEFAULT_MAX_FRAME, WIRE_VERSION};
 
 /// A boxed, sendable future — the return type of the hook and service traits.

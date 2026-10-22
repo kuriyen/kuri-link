@@ -44,7 +44,7 @@ open:  C→S Header{v:1, op:"open", method, args, cred?}         S→C Reply
        Reply = {"err": {...}} → server finishes the stream
 Reply: {"ok": <value>} | {"err": {"code": <code>, "message": <text>}}
 code:  bad_request | unsupported_version | denied | no_such_method | app
-       (an unknown code decodes as `unknown`)
+       | unavailable (an unknown code decodes as `unknown`)
 addr:  C→S Header{v:1, op:"open", method:"kuri-link.addr", cred?} [FIN]
        S→C Reply{"ok": null}, then frames {"id": bytes(32), "ip": ["addr:port", …]?,
        "relay": ["url", …]?}: the back end's address now, then each change
@@ -193,15 +193,14 @@ Turned on:
   the home's public IP changes does not learn the new one until it is back on
   the home network, and then only with mDNS on.
 
-## One gateway for a home (planned)
+## One gateway for a home
 
-Not built yet; this is the design it will be built to.
-
-Today each back end is a node of its own: its own key, its own way in, and
-its own pairing, so a phone pairs once per back end. A home with a camera
-service, a media server and a thermostat, each a separate program, pairs
-three times and has three nodes facing outside. The gateway makes it one of
-each: a phone pairs once with the home, and reaches every back end in it.
+Without a gateway, each back end is a node of its own: its own key, its own
+way in, and its own pairing, so a phone pairs once per back end. A home with
+a camera service, a media server and a thermostat, each a separate program,
+pairs three times and has three nodes facing outside. The gateway makes it
+one of each: a phone pairs once with the home, and reaches every back end in
+it.
 
 Arrows point away from the side that dials:
 
@@ -256,7 +255,7 @@ with ALPN kuri-link/1/<app>    pairing and authorizer       and register their a
   request with a new fault code, `unavailable`, which a front end from
   before it reads as `unknown`. Waking moves to the gateway too: before
   answering `unavailable`, it can call a `Waker` for the back end and wait
-  for it to register.
+  for it to register. (Waking at the gateway is not built yet.)
 
 Wire additions, all within version 1:
 
@@ -272,6 +271,13 @@ forward:  G→B a stream the gateway opens on the same connection:
           then as for call or open
 code:     unavailable (no back end serves the app now)
 ```
+
+In the API, a `Gateway` holds the back ends' pairing and who owns each app
+name, kept in a file with `Gateway::open`; `NodeBuilder::gateway` makes a node
+serve it. A back end is built with `NodeBuilder::behind_gateway(addr)`, pairs
+once with `Node::pair_gateway(ticket)`, and keeps the gateway's address as
+`Node::gateway_addr` reports it. `Node::registration` says whether the
+gateway forwards to it now, or refused it and why.
 
 Choices made, and why:
 
@@ -313,8 +319,13 @@ network changed does not find it again without mDNS, and has to pair again.
 | `port_mapping` | off | ask the home router to forward the port: an inbound port into the home |
 | `local_discovery` | off | announce and look up nodes on the local network (mDNS): seen by everyone on it |
 | `Waker` | none | wake a sleeping back end before one retry |
+| `gateway` | off | be the home's gateway: pair phones once, forward to the back ends behind it |
+| `behind_gateway` | off | serve through a gateway: dial out to it and listen for nothing |
 
 ## Not yet
+
+- Waking a back end from the gateway. Today a phone hears `unavailable`
+  until the back end registers again.
 
 - Typed Dart clients generated from Rust service definitions. Today the Dart
   side calls by method name with CBOR bytes.

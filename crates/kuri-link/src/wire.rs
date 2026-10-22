@@ -39,6 +39,33 @@ pub(crate) struct Header {
     /// Opaque to Kuri Link; handed to the [`crate::Authorizer`] as-is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cred: Option<serde_bytes::ByteBuf>,
+    /// On a stream a gateway forwards to a back end: the application the
+    /// front end asked for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app: Option<String>,
+    /// On a stream a gateway forwards: the front end's key, as the gateway
+    /// vouches for it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub caller: Option<serde_bytes::ByteBuf>,
+    /// On a stream a gateway forwards: what the gateway's authorizer said of
+    /// the caller, when it said anything.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claims: Option<Value>,
+}
+
+impl Header {
+    pub(crate) fn new(op: Op, method: &str, args: Value, cred: Option<Vec<u8>>) -> Header {
+        Header {
+            v: WIRE_VERSION,
+            op,
+            method: method.to_owned(),
+            args,
+            cred: cred.map(serde_bytes::ByteBuf::from),
+            app: None,
+            caller: None,
+            claims: None,
+        }
+    }
 }
 
 fn null() -> Value {
@@ -71,9 +98,11 @@ impl Fault {
 }
 
 /// Fault categories. Flexible: a code a peer does not know decodes as
-/// [`FaultCode::Unknown`] rather than failing the whole reply.
+/// [`FaultCode::Unknown`] rather than failing the whole reply. More codes may
+/// come, so a `match` on it needs a wildcard arm.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum FaultCode {
     /// The header was missing, malformed, or too large.
     BadRequest,
@@ -85,6 +114,10 @@ pub enum FaultCode {
     NoSuchMethod,
     /// The method ran and failed.
     App,
+    /// The application's back end is not there now: a gateway answered, and
+    /// no back end it admits has registered the application, or the one that
+    /// had is gone.
+    Unavailable,
     /// A code from a newer peer.
     #[serde(other)]
     Unknown,

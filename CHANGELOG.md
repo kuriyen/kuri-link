@@ -19,6 +19,32 @@ depend on a tag.
   `KURI-LINK:` followed by base32. Peer files and tickets written by 0.1.0 still
   read in later releases.
 
+## Unreleased
+
+### `kuri-link`
+
+- **Changed: `FaultCode` is `#[non_exhaustive]`, and has a new code,
+  `Unavailable`.** A `match` on it needs a wildcard arm. A peer from before
+  this release reads the new code as `unknown`.
+- One gateway for a home: a node built with `NodeBuilder::gateway` pairs the
+  phones once, and forwards each request to the back end that registered its
+  application there, so a phone reaches every back end at home through one
+  key. A back end built with `NodeBuilder::behind_gateway` dials out to the
+  gateway, registers its applications, and listens for nothing; it pairs with
+  the gateway once, with `Node::pair_gateway` and a ticket from
+  `Gateway::pairing`. `Node::registration` says whether the gateway forwards
+  to it, and `Node::gateway_addr` follows the gateway's address.
+- At the gateway, an application's name belongs to the first back end that
+  registered it, until that back end is unpaired; `Gateway::open` keeps the
+  owners in a file. A front end is authorized at the gateway, and the back end
+  sees it as the caller. While no back end serves an application, the gateway
+  answers its requests with `FaultCode::Unavailable`.
+
+### Dart package
+
+- `FaultCode.unavailable`: a gateway answered, and no back end serves the app
+  there now.
+
 ## 0.2.0 — 2026-10-22
 
 Upgrade if your app reaches a back end from outside its home: a back end can

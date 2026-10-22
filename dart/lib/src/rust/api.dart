@@ -168,6 +168,9 @@ enum FaultCode {
   /// The method ran and failed.
   app,
 
+  /// A gateway answered, and no back end serves the app there now.
+  unavailable,
+
   /// A code from a newer back end.
   unknown,
 }
