@@ -19,7 +19,8 @@ kuri-link = { path = "../../crates/kuri-link" }
 kuri-link-ffi = { path = "../../crates/kuri-link-ffi" }
 # The server draws its ticket as a QR code on the terminal.
 qrcode = { version = "0.14", default-features = false }
-tokio.workspace = true
+# Stops cleanly on SIGTERM, so that a gateway hears it go at once.
+tokio = { workspace = true, features = ["signal"] }
 
 [dev-dependencies]
 # A relay in the test process, over plain HTTP on loopback.

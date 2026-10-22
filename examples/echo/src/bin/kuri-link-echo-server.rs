@@ -187,8 +187,26 @@ async fn run() -> Result<(), String> {
              server's key and addresses, and only paired ones get in"
         );
     }
-    std::future::pending::<()>().await;
+    stopped().await;
+    node.shutdown().await;
     Ok(())
+}
+
+/// Finishes when the server is told to stop: Ctrl-C, or SIGTERM from a
+/// supervisor.
+async fn stopped() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        if let Ok(mut terminate) = signal(SignalKind::terminate()) {
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {}
+                _ = terminate.recv() => {}
+            }
+            return;
+        }
+    }
+    let _ = tokio::signal::ctrl_c().await;
 }
 
 /// Serves through the gateway whose address `file` holds, pairing with it
@@ -229,8 +247,11 @@ async fn behind(builder: NodeBuilder, file: &Path, ticket: Option<Ticket>) -> Re
     );
     let mut addr = node.gateway_addr().expect("behind a gateway");
     let mut registration = node.registration().expect("behind a gateway");
+    let stop = stopped();
+    tokio::pin!(stop);
     loop {
         tokio::select! {
+            _ = &mut stop => break,
             changed = addr.changed() => {
                 if changed.is_err() {
                     break;
@@ -248,6 +269,7 @@ async fn behind(builder: NodeBuilder, file: &Path, ticket: Option<Ticket>) -> Re
             }
         }
     }
+    node.shutdown().await;
     Ok(())
 }
 
