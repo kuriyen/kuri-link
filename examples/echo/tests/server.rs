@@ -4,7 +4,9 @@
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
 
-use kuri_link::{Node, RelayUrl, Relays, Route, Ticket, Value};
+use kuri_link::{
+    Gateway, Node, Pairing, PeerAddr, PeerSet, RelayUrl, Relays, Route, Ticket, Value,
+};
 
 /// Stops the server however the test ends.
 struct Server(Child);
@@ -94,4 +96,55 @@ async fn with_a_relay_the_ticket_reaches_the_server_through_it() {
     phone.shutdown().await;
     drop(server);
     relay_server.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn behind_a_gateway_the_server_pairs_once_and_serves_through_it() {
+    let phones = Pairing::new(PeerSet::new());
+    let gateway = Gateway::new(PeerSet::new());
+    let home = Node::builder()
+        .relays(Relays::None)
+        .pairing(phones.clone())
+        .gateway(gateway.clone())
+        .bind()
+        .await
+        .unwrap();
+    let file = std::env::temp_dir().join(format!("kuri-link-gateway-{}", home.id().fmt_short()));
+    let ticket = gateway
+        .pairing()
+        .issue(home.addr(), std::time::Duration::from_secs(60));
+
+    let server = Server(
+        Command::new(env!("CARGO_BIN_EXE_kuri-link-echo-server"))
+            .arg("--gateway")
+            .arg(&file)
+            .args(["--gateway-ticket", &ticket.to_string()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("server starts"),
+    );
+    tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        while !gateway.apps().iter().any(|app| app.online) {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("the server registers");
+    let kept: PeerAddr = std::fs::read_to_string(&file).unwrap().parse().unwrap();
+    assert_eq!(kept.id, home.id(), "the server keeps the gateway's address");
+
+    let phone = Node::builder().relays(Relays::None).bind().await.unwrap();
+    let addr = phone
+        .pair(&phones.issue(home.addr(), std::time::Duration::from_secs(60)))
+        .await
+        .unwrap();
+    let echo = phone.connect(addr, kuri_link_echo::APP).await.unwrap();
+    let whoami: String = echo.call_typed("whoami", &()).await.unwrap();
+    assert_eq!(whoami, phone.id().to_string());
+
+    phone.shutdown().await;
+    drop(server);
+    home.shutdown().await;
+    let _ = std::fs::remove_file(file);
 }

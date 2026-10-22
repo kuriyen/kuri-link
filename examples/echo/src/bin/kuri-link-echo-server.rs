@@ -5,6 +5,7 @@
 //! ```text
 //! kuri-link-echo-server [--port PORT | --bind ADDR] [--port-mapping]
 //!                       [--peers FILE] [--key FILE] [--relay URL]...
+//! kuri-link-echo-server --gateway FILE [--gateway-ticket TICKET] [--key FILE]
 //! ```
 //!
 //! The server listens on every interface, on a random port unless `--port`
@@ -31,12 +32,25 @@
 //! than one. The server stays reachable through it, and the ticket names it,
 //! so a front end on another network (a phone on mobile data) can reach the
 //! server when no direct path exists. Without `--relay`, direct paths only.
+//!
+//! With `--gateway`, the server listens for nothing and issues no ticket:
+//! it serves through a home's gateway, such as `kuri-link-gateway`, which
+//! pairs the phones and forwards their requests. FILE holds the gateway's
+//! address, and the server keeps it current as the gateway reports changes.
+//! The first time, pass `--gateway-ticket` too, with a ticket from
+//! `kuri-link-gateway pair back-end`: the server pairs with the gateway and
+//! writes FILE. Keep `--key` as well, or the gateway sees a stranger after a
+//! restart.
 
 use std::io::IsTerminal;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use kuri_link::{Node, Pairing, PeerSet, Reach, RelayUrl, Relays};
+use std::path::{Path, PathBuf};
+
+use kuri_link::{
+    Node, NodeBuilder, Pairing, PeerAddr, PeerSet, Reach, Registration, RelayUrl, Relays, Ticket,
+};
 use qrcode::render::unicode::Dense1x2;
 use qrcode::QrCode;
 
@@ -58,8 +72,10 @@ async fn run() -> Result<(), String> {
     let mut bind: Option<SocketAddr> = None;
     let mut port = None;
     let mut port_mapping = false;
-    let mut peers = PeerSet::new();
+    let mut peers = None;
     let mut key = None;
+    let mut gateway: Option<PathBuf> = None;
+    let mut gateway_ticket: Option<Ticket> = None;
     let mut relays: Vec<RelayUrl> = Vec::new();
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
@@ -68,7 +84,9 @@ async fn run() -> Result<(), String> {
             "--bind" => bind = Some(value()?.parse().map_err(|e| format!("--bind: {e}"))?),
             "--port" => port = Some(value()?.parse().map_err(|e| format!("--port: {e}"))?),
             "--port-mapping" => port_mapping = true,
-            "--peers" => peers = PeerSet::open(value()?).map_err(|e| format!("--peers: {e}"))?,
+            "--peers" => {
+                peers = Some(PeerSet::open(value()?).map_err(|e| format!("--peers: {e}"))?)
+            }
             "--key" => {
                 let path = value()?;
                 key = Some(
@@ -77,24 +95,46 @@ async fn run() -> Result<(), String> {
                 );
             }
             "--relay" => relays.push(value()?.parse().map_err(|e| format!("--relay: {e}"))?),
+            "--gateway" => gateway = Some(value()?.into()),
+            "--gateway-ticket" => {
+                gateway_ticket = Some(
+                    value()?
+                        .parse()
+                        .map_err(|e| format!("--gateway-ticket: {e}"))?,
+                )
+            }
             other => return Err(format!("unknown argument {other}")),
         }
     }
 
-    let pairing = Pairing::new(peers);
     let mut builder = Node::builder()
         .relays(if relays.is_empty() {
             Relays::None
         } else {
             Relays::Custom(relays.clone())
         })
-        .port_mapping(port_mapping)
         .local_discovery(true)
-        .pairing(pairing.clone())
         .serve(kuri_link_echo::APP, kuri_link_echo::methods());
     if let Some(key) = key {
         builder = builder.secret_key(key);
     }
+    if let Some(file) = gateway {
+        if peers.is_some() || port_mapping || bind.is_some() || port.is_some() {
+            return Err(
+                "behind a gateway, the gateway pairs the phones and faces outside; \
+                        --peers, --port-mapping, --bind and --port are for a server that listens"
+                    .into(),
+            );
+        }
+        return behind(builder, &file, gateway_ticket).await;
+    }
+    if gateway_ticket.is_some() {
+        return Err(
+            "--gateway-ticket needs --gateway FILE, to keep the gateway's address in".into(),
+        );
+    }
+    let pairing = Pairing::new(peers.unwrap_or_default());
+    builder = builder.port_mapping(port_mapping).pairing(pairing.clone());
     match (bind, port) {
         (Some(_), Some(_)) => return Err("--bind and --port both name a port; pass one".into()),
         (Some(addr), None) => builder = builder.bind_addr(addr),
@@ -149,6 +189,76 @@ async fn run() -> Result<(), String> {
     }
     std::future::pending::<()>().await;
     Ok(())
+}
+
+/// Serves through the gateway whose address `file` holds, pairing with it
+/// first if given a ticket.
+async fn behind(builder: NodeBuilder, file: &Path, ticket: Option<Ticket>) -> Result<(), String> {
+    let gateway: PeerAddr = match &ticket {
+        Some(ticket) => ticket.addr.clone(),
+        None => std::fs::read_to_string(file)
+            .map_err(|e| {
+                format!(
+                    "--gateway {}: {e}; pair with the gateway first (--gateway-ticket)",
+                    file.display()
+                )
+            })?
+            .parse()
+            .map_err(|e| format!("--gateway {}: {e}", file.display()))?,
+    };
+    let node = builder
+        .behind_gateway(gateway.clone())
+        .bind()
+        .await
+        .map_err(|e| e.to_string())?;
+    let keep = |addr: &PeerAddr| {
+        std::fs::write(file, format!("{addr}\n")).map_err(|e| format!("{}: {e}", file.display()))
+    };
+    if let Some(ticket) = ticket {
+        let gateway = node
+            .pair_gateway(&ticket)
+            .await
+            .map_err(|e| format!("pairing with the gateway: {e}"))?;
+        keep(&gateway)?;
+    }
+    eprintln!(
+        "serving {} as {} through the gateway {}",
+        kuri_link_echo::APP,
+        node.id().fmt_short(),
+        gateway.id.fmt_short(),
+    );
+    let mut addr = node.gateway_addr().expect("behind a gateway");
+    let mut registration = node.registration().expect("behind a gateway");
+    loop {
+        tokio::select! {
+            changed = addr.changed() => {
+                if changed.is_err() {
+                    break;
+                }
+                let now = addr.borrow_and_update().clone();
+                keep(&now)?;
+                eprintln!("the gateway is now at {now}");
+            }
+            changed = registration.changed() => {
+                if changed.is_err() {
+                    break;
+                }
+                let now = registration.borrow_and_update().clone();
+                eprintln!("{}", registered(&now));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn registered(registration: &Registration) -> String {
+    match registration {
+        Registration::Registered => {
+            "registered with the gateway: phones paired with it reach this server".into()
+        }
+        Registration::Refused(fault) => format!("the gateway refused this server: {fault}"),
+        _ => "not connected to the gateway; dialing it again".into(),
+    }
 }
 
 /// Whether a device away from this network can reach the server, and if not,

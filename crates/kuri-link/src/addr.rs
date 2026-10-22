@@ -149,6 +149,11 @@ impl FromStr for RelayUrl {
 /// How to reach a peer: its key, plus any direct addresses and relays known
 /// for it. The key alone is enough on paths that can look it up; on a LAN with
 /// relays off, give a socket address too.
+///
+/// The text form, for keeping an address in a file, is the key, then each
+/// direct address and each relay, separated by spaces:
+/// `ea4a…d22c 192.0.2.40:41234 https://relay.example.org/`. Reading it back
+/// accepts any whitespace between them, so a file may hold one to a line.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PeerAddr {
     pub id: PeerId,
@@ -248,8 +253,71 @@ impl AddrWire {
     }
 }
 
+impl fmt::Display for PeerAddr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.id)?;
+        for socket in &self.addrs {
+            write!(f, " {socket}")?;
+        }
+        for relay in &self.relays {
+            write!(f, " {relay}")?;
+        }
+        Ok(())
+    }
+}
+
+impl FromStr for PeerAddr {
+    type Err = ParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut words = s.split_whitespace();
+        let id = words
+            .next()
+            .ok_or_else(|| ParseError("an address starts with the peer's key".into()))?;
+        let mut addr = PeerAddr::new(id.parse()?);
+        for word in words {
+            addr = match word.parse::<SocketAddr>() {
+                Ok(socket) => addr.with_addr(socket),
+                Err(_) => addr.with_relay(word.parse()?),
+            };
+        }
+        Ok(addr)
+    }
+}
+
 impl From<PeerId> for PeerAddr {
     fn from(id: PeerId) -> PeerAddr {
         PeerAddr::new(id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_address_reads_back_from_its_text() {
+        let id = NodeKey::from_bytes(&[7; 32]).public();
+        let addr = PeerAddr::new(id)
+            .with_addr("192.0.2.40:41234".parse().unwrap())
+            .with_addr("[2001:db8::40]:41234".parse().unwrap())
+            .with_relay("https://relay.example.org".parse().unwrap());
+        let text = addr.to_string();
+        assert_eq!(
+            text,
+            format!("{id} 192.0.2.40:41234 [2001:db8::40]:41234 https://relay.example.org/")
+        );
+        assert_eq!(text.parse::<PeerAddr>().unwrap(), addr);
+        assert_eq!(
+            text.replace(' ', "\n").parse::<PeerAddr>().unwrap(),
+            addr,
+            "one to a line"
+        );
+        assert_eq!(
+            id.to_string().parse::<PeerAddr>().unwrap(),
+            PeerAddr::new(id)
+        );
+        assert!("".parse::<PeerAddr>().is_err());
+        assert!(format!("{id} not-an-address").parse::<PeerAddr>().is_err());
     }
 }

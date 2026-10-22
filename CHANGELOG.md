@@ -39,6 +39,9 @@ depend on a tag.
   owners in a file. A front end is authorized at the gateway, and the back end
   sees it as the caller. While no back end serves an application, the gateway
   answers its requests with `FaultCode::Unavailable`.
+- `PeerAddr` has a text form (`Display` and `FromStr`) for keeping an address
+  in a file: the key, then each direct address and relay, separated by
+  spaces.
 
 ### `kuri-link-gateway`
 
@@ -53,6 +56,12 @@ depend on a tag.
 
 - `FaultCode.unavailable`: a gateway answered, and no back end serves the app
   there now.
+
+### Examples
+
+- `kuri-link-echo-server --gateway FILE` serves through a gateway instead of
+  listening, and issues no ticket. Given `--gateway-ticket` too, it pairs with
+  the gateway first; it keeps the gateway's address in FILE.
 
 ## 0.2.0 — 2026-10-22
 
