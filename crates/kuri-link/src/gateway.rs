@@ -242,6 +242,7 @@ impl Gateway {
         };
         let served = door.send_addr(request, send, self.unpaired(back_end)).await;
         self.withdraw(id);
+        tracing::info!(back_end = %back_end.fmt_short(), "a back end's registration ended");
         if !self.inner.back_ends.peers().contains(&back_end) {
             conn.close(VarInt::from_u32(UNPAIRED), b"unpaired from the gateway");
         }

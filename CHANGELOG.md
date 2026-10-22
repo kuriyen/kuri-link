@@ -40,6 +40,15 @@ depend on a tag.
   sees it as the caller. While no back end serves an application, the gateway
   answers its requests with `FaultCode::Unavailable`.
 
+### `kuri-link-gateway`
+
+- A new program: a home's gateway on its own. It keeps its key, its port, the
+  paired phones and back ends, and who serves each app in one directory.
+  `kuri-link-gateway pair phone` and `pair back-end` print a one-time ticket,
+  as a QR code on a terminal; `status` lists the apps, phones and back ends,
+  and `unpair` removes one. The commands reach the running gateway through a
+  socket only its user can open.
+
 ### Dart package
 
 - `FaultCode.unavailable`: a gateway answered, and no back end serves the app

@@ -1997,6 +1997,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "kuri-link-gateway"
+version = "0.2.0"
+dependencies = [
+ "kuri-link",
+ "qrcode",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,0 +1,18 @@
+[package]
+name = "kuri-link-gateway"
+description = "A home's Kuri Link gateway: phones pair once and reach every back end behind it."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+kuri-link = { path = "../kuri-link" }
+# Tickets drawn as QR codes on the terminal, as the echo server draws its own.
+qrcode = { version = "0.14", default-features = false }
+tokio = { workspace = true, features = ["net", "signal"] }
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "registry", "std"] }

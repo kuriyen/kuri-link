@@ -1,6 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["crates/kuri-link", "crates/kuri-link-ffi", "examples/echo"]
+members = [
+    "crates/kuri-link",
+    "crates/kuri-link-ffi",
+    "crates/kuri-link-gateway",
+    "examples/echo",
+]
 
 [workspace.package]
 version = "0.2.0"

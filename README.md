@@ -33,6 +33,9 @@ until they arrive.
   port on the router. When its address changes anyway, it tells its devices,
   and with mDNS turned on they find it at home. When the network makes all
   that impossible, the back end says so.
+- **One gateway for a home.** A phone pairs once with the home's gateway and
+  reaches every back end behind it; the back ends dial out to the gateway and
+  listen for nothing. `kuri-link-gateway` is one, as a program of its own.
 - **No silent third parties.** Relays are off unless you name them — your own
   `iroh-relay`, or the public ones, by explicit choice.
 - **Evolvable payloads.** CBOR maps with named keys: a newer peer can add
@@ -78,13 +81,14 @@ own, start with [docs/integration.md](docs/integration.md).
 ## Layout
 
 ```
-crates/kuri-link      the library: node, client, wire format, hooks, pairing
-crates/kuri-link-ffi  the plain-typed surface a Dart front end binds to
-dart/                 the Dart package, kuri_link (bindings generated; see its README)
-examples/echo         an example back end: linked into an app, or run as a server
-examples/app          a Flutter app for Linux and Android on that back end, in-process or remote
-docs/integration.md   putting Kuri Link into an app, step by step
-docs/design.md        wire format and design decisions
+crates/kuri-link          the library: node, client, wire format, hooks, pairing
+crates/kuri-link-ffi      the plain-typed surface a Dart front end binds to
+crates/kuri-link-gateway  a home's gateway as a program: pairs phones and back ends
+dart/                     the Dart package, kuri_link (bindings generated; see its README)
+examples/echo             an example back end: linked into an app, or run as a server
+examples/app              a Flutter app for Linux and Android on that back end, in-process or remote
+docs/integration.md       putting Kuri Link into an app, step by step
+docs/design.md            wire format and design decisions
 ```
 
 ## Build and test
