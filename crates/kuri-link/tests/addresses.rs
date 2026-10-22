@@ -42,10 +42,40 @@ fn free_port() -> u16 {
         .port()
 }
 
+/// Forwards UDP between whoever sends to it and `to`, until the task is
+/// aborted: an address that reaches the back end only while a test wants it
+/// to.
+async fn udp_forwarder(to: SocketAddr) -> (SocketAddr, tokio::task::JoinHandle<()>) {
+    let front = tokio::net::UdpSocket::bind(loopback()).await.unwrap();
+    let back = tokio::net::UdpSocket::bind(loopback()).await.unwrap();
+    back.connect(to).await.unwrap();
+    let addr = front.local_addr().unwrap();
+    let task = tokio::spawn(async move {
+        let mut sender = None;
+        let mut up = vec![0u8; 65536];
+        let mut down = vec![0u8; 65536];
+        loop {
+            tokio::select! {
+                Ok((n, from)) = front.recv_from(&mut up) => {
+                    sender = Some(from);
+                    let _ = back.send(&up[..n]).await;
+                }
+                Ok(n) = back.recv(&mut down) => {
+                    if let Some(sender) = sender {
+                        let _ = front.send_to(&down[..n], sender).await;
+                    }
+                }
+            }
+        }
+    });
+    (addr, task)
+}
+
 /// The back end goes away and comes back on the same key and port, while the
-/// client knows it only at its loopback address, which the back end does not
-/// list. Once the client has made a request it learns the back end's own
-/// addresses, and dials one of those after the restart.
+/// client was given only an address that stops working at the restart: a
+/// forwarder on loopback, which the back end does not list. Once the client
+/// has made a request it learns the back end's own addresses, and only by
+/// dialing one of those can it reach the back end again.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_client_learns_its_back_ends_address_and_dials_that() {
     let key = NodeKey::generate();
@@ -70,10 +100,10 @@ async fn a_client_learns_its_back_ends_address_and_dials_that() {
         server.shutdown().await;
         return;
     };
-    let given = PeerAddr::new(server.id()).with_addr(SocketAddr::from((Ipv4Addr::LOCALHOST, port)));
-    assert!(!listed
-        .addrs
-        .contains(&given.addrs.first().copied().unwrap()));
+    let (forwarder, forwarding) =
+        udp_forwarder(SocketAddr::from((Ipv4Addr::LOCALHOST, port))).await;
+    let given = PeerAddr::new(server.id()).with_addr(forwarder);
+    assert!(!listed.addrs.contains(&forwarder));
 
     // On every interface: a socket on loopback reaches nothing else.
     let client_node = Node::builder()
@@ -105,6 +135,8 @@ async fn a_client_learns_its_back_ends_address_and_dials_that() {
     })
     .await
     .expect("a lost connection has no path");
+    // From here on, the address the client was given leads nowhere.
+    forwarding.abort();
     let server = serve().await.unwrap();
     assert_eq!(client.call("echo", hi.clone()).await.unwrap(), hi);
     let Some(Route::Direct(used)) = client.path().map(|p| p.route) else {
