@@ -19,7 +19,25 @@ depend on a tag.
   `KURI-LINK:` followed by base32. Peer files and tickets written by 0.1.0 still
   read in later releases.
 
-## Unreleased
+## 0.2.0 — 2026-10-22
+
+Upgrade if your app reaches a back end from outside its home: a back end can
+now keep its public address across restarts, and tells its front ends that
+address and each change of it, so a phone away from home keeps finding it.
+Both were tested on a phone, over mobile data and at home.
+
+Two changes in behavior can break an app on 0.1.x, so check both before
+upgrading from it:
+
+- No node asks the router for a port mapping unless told to. An app that
+  relied on iroh's mapping for direct paths from outside turns it on with
+  `NodeBuilder::port_mapping(true)`, or uses a relay.
+- Method names starting with `kuri-link.` are reserved. `NodeBuilder::bind`
+  refuses a service that lists one, and a request for one no longer reaches
+  the service.
+
+Peers still speak wire format 1, so 0.1.x and 0.2.0 peers keep working
+together.
 
 ### `kuri-link`
 
@@ -52,9 +70,9 @@ depend on a tag.
   `Client::peer_addr()` is the address as the client knows it, and
   `Client::peer_addr_updates()` follows its changes, so an app can keep it. A
   back end from before this release refuses the method, and nothing changes.
-- Method names starting with `RESERVED_PREFIX` (`kuri-link.`) are kept for
-  Kuri Link. A request for one never reaches an application's `Service`, and
-  `NodeBuilder::bind` refuses a service that lists one among its
+- **Changed: method names starting with `RESERVED_PREFIX` (`kuri-link.`) are
+  kept for Kuri Link.** A request for one never reaches an application's
+  `Service`, and `NodeBuilder::bind` refuses a service that lists one among its
   `Service::method_names()`, a new method whose default lists none; `Methods`
   lists its own.
 - With `NodeBuilder::local_discovery(true)`, nodes announce and look each
