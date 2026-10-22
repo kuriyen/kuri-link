@@ -38,7 +38,9 @@ depend on a tag.
   registered it, until that back end is unpaired; `Gateway::open` keeps the
   owners in a file. A front end is authorized at the gateway, and the back end
   sees it as the caller. While no back end serves an application, the gateway
-  answers its requests with `FaultCode::Unavailable`.
+  answers its requests with `FaultCode::Unavailable`. A back end that stops
+  without closing its connection is taken for gone after 10 seconds of
+  silence, and one that registers again replaces its old connection at once.
 - `PeerAddr` has a text form (`Display` and `FromStr`) for keeping an address
   in a file: the key, then each direct address and relay, separated by
   spaces.

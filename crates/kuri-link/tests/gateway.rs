@@ -402,3 +402,43 @@ async fn a_back_end_can_narrow_what_the_gateway_admits() {
     camera.shutdown().await;
     home.shutdown().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_back_end_registering_again_takes_its_requests_off_the_old_connection() {
+    let phones = Pairing::new(PeerSet::new());
+    let gateway = Gateway::new(PeerSet::new());
+    let home = gateway_node(&gateway, &phones, NodeKey::generate()).await;
+    let key = NodeKey::generate();
+    let old = paired_back_end(&gateway, &home, key.clone(), "old").await;
+    let phone = phone().await;
+    phone
+        .pair(&phones.issue(home.bound_addr(), MINUTE))
+        .await
+        .unwrap();
+
+    // A stream under way to the old one: `upper` waits for the phone to finish.
+    let client = phone.connect(home.bound_addr(), APP).await.unwrap();
+    let mut io = client.open("upper", Value::Null).await.unwrap();
+    io.send.write_all(b"half").await.unwrap();
+
+    // The same back end on a new connection, as when it restarted after
+    // losing its network without the gateway hearing it go.
+    let new = back_end(home.bound_addr(), key, "new").await;
+    settles(&new, |r| *r == Registration::Registered).await;
+
+    // The stream on the old connection fails now, not at its idle timeout.
+    let mut back = Vec::new();
+    let ended = tokio::time::timeout(Duration::from_secs(5), io.recv.read_to_end(&mut back))
+        .await
+        .expect("the old stream ends at once");
+    assert!(
+        ended.is_err(),
+        "it fails rather than ending cleanly: {back:?}"
+    );
+    assert_eq!(who_echoes(&phone, &home).await.unwrap(), "new");
+
+    old.shutdown().await;
+    phone.shutdown().await;
+    new.shutdown().await;
+    home.shutdown().await;
+}

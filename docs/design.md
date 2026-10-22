@@ -256,6 +256,13 @@ with ALPN kuri-link/1/<app>    pairing and authorizer       and register their a
   before it reads as `unknown`. Waking moves to the gateway too: before
   answering `unavailable`, it can call a `Waker` for the back end and wait
   for it to register. (Waking at the gateway is not built yet.)
+- **A back end gone without a word is noticed soon.** A back end that
+  crashes, or loses power, sends no goodbye, and requests forwarded to it wait
+  until its connection times out. A back end therefore sets that timeout to
+  10 seconds, instead of the 30 that suit a phone on a weak network; the
+  shorter of the two ends' timeouts applies. When it registers again on a new
+  connection, as after a restart, the gateway closes the old one at once, and
+  requests still on it fail instead of waiting.
 
 Wire additions, all within version 1:
 

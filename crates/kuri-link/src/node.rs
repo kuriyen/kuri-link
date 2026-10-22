@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::Duration;
 
 use ciborium::Value;
-use iroh::endpoint::{presets, BindOpts, Connection, PortmapperConfig};
+use iroh::endpoint::{presets, BindOpts, Connection, PortmapperConfig, QuicTransportConfig};
 use iroh::protocol::{AcceptError, ProtocolHandler, Router};
 use iroh::{Endpoint, RelayMode, TransportAddr, Watcher};
 use iroh_mdns_address_lookup::MdnsAddressLookup;
@@ -364,6 +364,16 @@ impl NodeBuilder {
         let mut builder = Endpoint::builder(presets::Minimal);
         if !iroh_maps {
             builder = builder.portmapper_config(PortmapperConfig::Disabled);
+        }
+        if self.behind.is_some() {
+            let idle = crate::uplink::IDLE_TIMEOUT
+                .try_into()
+                .expect("a few seconds fit an idle timeout");
+            builder = builder.transport_config(
+                QuicTransportConfig::builder()
+                    .max_idle_timeout(Some(idle))
+                    .build(),
+            );
         }
         if let Some(key) = self.key {
             builder = builder.secret_key(key.into_iroh());

@@ -58,6 +58,10 @@ const UNPAIRED: u32 = 1;
 /// failed.
 const BROKEN: u32 = 2;
 
+/// The code a gateway closes a back end's older connection with once the back
+/// end registers on a new one.
+const SUPERSEDED: u32 = 3;
+
 /// A home's gateway: the back ends it admits, and which of them serves each
 /// application.
 ///
@@ -289,6 +293,15 @@ impl Gateway {
             }
         }
         let new_name = apps.iter().any(|app| !before.contains_key(app));
+        // The same back end on another connection has restarted, or lost its
+        // network, without the gateway hearing it go. Requests on the old
+        // connection would wait for its idle timeout; closing it fails them now.
+        let superseded: Vec<Connection> = state
+            .live
+            .values()
+            .filter(|live| live.back_end == back_end && live.conn.stable_id() != conn.stable_id())
+            .map(|live| live.conn.clone())
+            .collect();
         let id = self.inner.next_registration.fetch_add(1, Ordering::Relaxed);
         for app in apps {
             let live = Live {
@@ -299,6 +312,12 @@ impl Gateway {
             state.live.insert(app.clone(), live);
         }
         drop(state);
+        for old in superseded {
+            old.close(
+                VarInt::from_u32(SUPERSEDED),
+                b"the back end registered again",
+            );
+        }
         if new_name {
             self.inner.names.send_modify(|count| *count += 1);
         }

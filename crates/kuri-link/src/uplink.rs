@@ -22,6 +22,17 @@ use crate::wire::{read_frame, write_frame, Fault, FaultCode, Header, Op, Reply, 
 const FIRST_WAIT: Duration = Duration::from_secs(1);
 const LONGEST_WAIT: Duration = Duration::from_secs(30);
 
+/// How long a registration must hold for the waits to start over. Shorter
+/// ones count as failures, so that two back ends with one key, each taking
+/// the registration from the other, do so ever more slowly.
+const HELD: Duration = Duration::from_secs(30);
+
+/// How long the gateway or a back end waits to hear from the other before it
+/// takes the connection for lost. A back end's own timeout bounds both ends',
+/// so that a back end gone without a word stops taking requests within this,
+/// instead of after the 30 seconds that suit a phone on a weak network.
+pub(crate) const IDLE_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// Where a back end behind a gateway stands with it. More cases may come, so
 /// a `match` on it needs a wildcard arm.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,9 +98,10 @@ impl Uplink {
         self.gateway.clone()
     }
 
-    /// Dials the gateway again now, if the link is waiting to.
+    /// Dials the gateway again now, if the link is waiting to. Kept for no
+    /// later wait: one that comes after a registration must run its course.
     pub(crate) fn retry(&self) {
-        self.retry.notify_one();
+        self.retry.notify_waiters();
     }
 }
 
@@ -136,9 +148,10 @@ async fn run(
             Err(e) => Err(Ended::Unreachable(e.to_string())),
         };
         match ended {
-            // A registration that held: the next failure starts the waits over.
-            Ok(()) => {
-                wait = FIRST_WAIT;
+            Ok(held) => {
+                if held >= HELD {
+                    wait = FIRST_WAIT;
+                }
                 registration.send_replace(Registration::Connecting);
                 tracing::info!("the connection to the gateway ended");
             }
@@ -167,13 +180,14 @@ enum Ended {
 
 impl BackEnd {
     /// Registers on `conn` and serves the requests the gateway forwards there,
-    /// until the connection or the registration ends.
+    /// until the connection or the registration ends. Returns how long the
+    /// registration held.
     async fn serve(
         self: Arc<Self>,
         conn: &Connection,
         gateway: &watch::Sender<PeerAddr>,
         registration: &watch::Sender<Registration>,
-    ) -> Result<(), Ended> {
+    ) -> Result<Duration, Ended> {
         let max = self.max_frame;
         let unreachable = |e: WireError| Ended::Unreachable(e.to_string());
         let (mut send, mut recv) = conn
@@ -201,6 +215,7 @@ impl BackEnd {
         }
         registration.send_replace(Registration::Registered);
         tracing::info!(gateway = %conn.remote_id().fmt_short(), "registered with the gateway");
+        let since = tokio::time::Instant::now();
 
         let id = gateway.borrow().id;
         let addresses = async {
@@ -227,7 +242,7 @@ impl BackEnd {
             _ = addresses => {}
             _ = requests => {}
         }
-        Ok(())
+        Ok(since.elapsed())
     }
 
     /// Answers one request the gateway forwarded.
