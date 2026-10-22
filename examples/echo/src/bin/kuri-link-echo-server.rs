@@ -3,7 +3,7 @@
 //! redeem one until it is stopped.
 //!
 //! ```text
-//! kuri-link-echo-server [--port PORT | --bind ADDR] [--no-port-mapping]
+//! kuri-link-echo-server [--port PORT | --bind ADDR] [--port-mapping]
 //!                       [--peers FILE] [--key FILE] [--relay URL]...
 //! ```
 //!
@@ -11,10 +11,12 @@
 //! names one, and the ticket lists the addresses of those interfaces. `--bind`
 //! listens on one address instead.
 //!
-//! Before it issues the ticket, the server asks the router to forward its port
-//! from outside, and waits up to five seconds for an answer: a ticket with the
-//! router's public address lets a phone on mobile data pair and connect with
-//! no relay. It says which way that went. `--no-port-mapping` does not ask.
+//! With `--port-mapping`, the server asks the router to forward its port from
+//! outside before it issues the ticket, and waits up to five seconds for an
+//! answer: a ticket with the router's public address lets a phone on mobile
+//! data pair and connect with no relay. The router then holds an inbound port
+//! that leads to this machine until the server stops. Without the flag it asks
+//! nothing. Either way, it says whether devices outside can reach it.
 //!
 //! `--peers` keeps the paired devices across restarts, and `--key` keeps the
 //! server's own key. With `--port` too, the router forwards the same outside
@@ -51,7 +53,7 @@ async fn main() {
 async fn run() -> Result<(), String> {
     let mut bind: Option<SocketAddr> = None;
     let mut port = None;
-    let mut port_mapping = true;
+    let mut port_mapping = false;
     let mut peers = PeerSet::new();
     let mut key = None;
     let mut relays: Vec<RelayUrl> = Vec::new();
@@ -61,7 +63,7 @@ async fn run() -> Result<(), String> {
         match flag.as_str() {
             "--bind" => bind = Some(value()?.parse().map_err(|e| format!("--bind: {e}"))?),
             "--port" => port = Some(value()?.parse().map_err(|e| format!("--port: {e}"))?),
-            "--no-port-mapping" => port_mapping = false,
+            "--port-mapping" => port_mapping = true,
             "--peers" => peers = PeerSet::open(value()?).map_err(|e| format!("--peers: {e}"))?,
             "--key" => {
                 let path = value()?;
@@ -148,13 +150,14 @@ fn describe(reach: &Reach, asked: bool) -> String {
              address is not public: the ISP puts this network behind its own NAT \
              (carrier-grade NAT), or a second router stands in front; {ONLY_HERE}"
         ),
-        Reach::Unmapped if !asked => {
-            format!("not reachable from outside: --no-port-mapping; {ONLY_HERE}")
-        }
-        _ => format!(
-            "not reachable from outside: the router forwards no port (it does not \
-             speak NAT-PMP or UPnP, or has them turned off); {ONLY_HERE}"
+        Reach::Unmapped(_) if !asked => format!(
+            "not reachable from outside: the router was not asked to forward a \
+             port (--port-mapping asks it); {ONLY_HERE}"
         ),
+        Reach::Unmapped(why) => {
+            format!("not reachable from outside: the router forwards no port ({why}); {ONLY_HERE}")
+        }
+        _ => format!("not reachable from outside; {ONLY_HERE}"),
     }
 }
 

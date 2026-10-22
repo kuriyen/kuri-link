@@ -23,28 +23,35 @@ depend on a tag.
 
 ### `kuri-link`
 
-- A back end now asks the home router itself to forward its port from
-  outside, by NAT-PMP or else UPnP, and asks for the outside port to equal its
-  own. iroh's mapping, which it replaces on a node that serves an application,
-  let the router choose a new outside port at every start, so each restart
-  changed the back end's public address. The mapping is renewed every two
-  minutes, which also picks up a new public IP from the ISP; `Node::shutdown`
-  releases it.
+- **Changed: no node asks the router for a port mapping unless told to.**
+  Through 0.1.2, iroh asked the home router by itself, on every node, to
+  forward the node's port from outside. Now no node sends the router a
+  NAT-PMP, UPnP or PCP request until `NodeBuilder::port_mapping(true)` turns it
+  on, because a forwarded port is an inbound port into the home. A node that
+  relied on iroh's mapping for direct paths from outside turns it on, or uses a
+  relay.
+- Turned on, a back end asks the home router itself to forward its port, by
+  NAT-PMP or else UPnP, and asks for the outside port to equal its own. iroh's
+  mapping, which it replaces on a node that serves an application, let the
+  router choose a new outside port at every start, so each restart changed the
+  back end's public address. The mapping is renewed every two minutes, which
+  also picks up a new public IP from the ISP; `Node::shutdown` releases it. A
+  router that grants only permanent mappings, which would outlive the node, is
+  not used.
 - `NodeBuilder::port(port)` binds the node's sockets, both address families,
   on a port of your choice. A back end that keeps its port keeps its public
   address across restarts.
 - `Node::reach(timeout)` says whether devices outside the node's network can
   reach it: `Reach::Public(addr)`, `Reach::BehindNat(addr)` (carrier-grade
-  NAT, or a second router) or `Reach::Unmapped`. `Reach` is
+  NAT, or a second router) or `Reach::Unmapped(reason)`. `Reach` is
   `#[non_exhaustive]`.
-- `NodeBuilder::port_mapping(false)` keeps a node from asking the router.
 
 ### Examples
 
-- `kuri-link-echo-server` waits up to five seconds for the router before it
-  issues its ticket, so the ticket carries the public address, and says
-  whether devices outside can reach it. `--port` keeps the port across
-  restarts, and `--no-port-mapping` does not ask the router.
+- `kuri-link-echo-server --port-mapping` asks the router to forward its port,
+  and waits up to five seconds for the answer before it issues its ticket, so
+  the ticket carries the public address. Either way, the server says whether
+  devices outside can reach it. `--port` keeps the port across restarts.
 - Without `--bind`, the server listens on both address families, so its
   ticket lists its IPv6 addresses too.
 

@@ -13,6 +13,11 @@
 //! more routers speak but less reliably, comes second. PCP, NAT-PMP's
 //! successor, is not spoken; most routers that speak it speak one of the
 //! other two as well.
+//!
+//! Every mapping asked for lapses unless renewed. A router that grants only
+//! permanent mappings is not used: such a mapping outlives a node that crashes
+//! or is uninstalled, until the router restarts, and by then the local address
+//! it leads to may belong to another device.
 
 use std::fmt;
 use std::io;
@@ -20,7 +25,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::time::Duration;
 
 use igd_next::aio::tokio::Tokio;
-use igd_next::{AddPortError, PortMappingProtocol, SearchOptions};
+use igd_next::{AddAnyPortError, AddPortError, PortMappingProtocol, SearchOptions};
 use iroh::Endpoint;
 use tokio::net::UdpSocket;
 use tokio::sync::{oneshot, watch};
@@ -53,15 +58,18 @@ const UPNP_SEARCH_CUTOFF: Duration = Duration::from_secs(2);
 /// The name a mapping shows in the router's UPnP table.
 const DESCRIPTION: &str = "kuri-link";
 
+/// Why a router that would forward the port is not used.
+const PERMANENT_ONLY: &str = "the router grants only permanent mappings";
+
 /// What the router has granted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum MapState {
     /// Still asking for the first time.
     Pending,
     /// The router forwards this outside address to the node.
     Mapped(SocketAddrV4),
-    /// No router forwards the node's port.
-    Unmapped,
+    /// No router forwards the node's port, for this reason.
+    Unmapped(String),
 }
 
 /// Keeps the node's port forwarded for as long as it lives, and its outside
@@ -82,11 +90,17 @@ impl fmt::Debug for PortMapper {
 
 impl PortMapper {
     /// Starts asking the router to forward `port`, the port of the node's
-    /// IPv4 socket, bound on `local_ip` or on every interface.
-    pub(crate) fn spawn(endpoint: Endpoint, local_ip: Option<Ipv4Addr>, port: u16) -> PortMapper {
+    /// IPv4 socket, bound on `local_ip` or on every interface. `nat_pmp`
+    /// names the NAT-PMP router to ask instead of the default gateway.
+    pub(crate) fn spawn(
+        endpoint: Endpoint,
+        local_ip: Option<Ipv4Addr>,
+        port: u16,
+        nat_pmp: Option<SocketAddrV4>,
+    ) -> PortMapper {
         let (state_tx, state) = watch::channel(MapState::Pending);
         let (stop, stop_rx) = oneshot::channel();
-        let task = tokio::spawn(run(endpoint, local_ip, port, state_tx, stop_rx));
+        let task = tokio::spawn(run(endpoint, local_ip, port, nat_pmp, state_tx, stop_rx));
         PortMapper {
             state,
             stop: Some(stop),
@@ -94,16 +108,17 @@ impl PortMapper {
         }
     }
 
-    /// The outside address, once the router has answered or `deadline` has
-    /// passed, whichever comes first.
-    pub(crate) async fn settled(&self, deadline: Instant) -> Option<SocketAddrV4> {
+    /// The outside address, or why there is none, once the router has
+    /// answered or `deadline` has passed, whichever comes first.
+    pub(crate) async fn settled(&self, deadline: Instant) -> Result<SocketAddrV4, String> {
         let mut state = self.state.clone();
         let _ =
             tokio::time::timeout_at(deadline, state.wait_for(|s| *s != MapState::Pending)).await;
-        let current = *state.borrow();
+        let current = state.borrow().clone();
         match current {
-            MapState::Mapped(external) => Some(external),
-            MapState::Pending | MapState::Unmapped => None,
+            MapState::Mapped(external) => Ok(external),
+            MapState::Unmapped(reason) => Err(reason),
+            MapState::Pending => Err("the router has not answered yet".into()),
         }
     }
 
@@ -129,6 +144,7 @@ async fn run(
     endpoint: Endpoint,
     local_ip: Option<Ipv4Addr>,
     port: u16,
+    nat_pmp: Option<SocketAddrV4>,
     state: watch::Sender<MapState>,
     mut stop: oneshot::Receiver<()>,
 ) {
@@ -137,7 +153,7 @@ async fn run(
     // When what the router last granted lapses unless renewed.
     let mut lapses = Instant::now();
     loop {
-        match request(&mut held, local_ip, port).await {
+        match request(&mut held, local_ip, port, nat_pmp).await {
             Ok((external, lifetime)) => {
                 lapses = Instant::now() + lifetime;
                 if advertised != Some(external) {
@@ -158,10 +174,10 @@ async fn run(
                     if let Some(old) = advertised.take() {
                         endpoint.remove_external_addr(&old.into()).await;
                     }
-                    if *state.borrow() != MapState::Unmapped {
+                    if !matches!(*state.borrow(), MapState::Unmapped(_)) {
                         tracing::info!(reason = %e, "no router forwards this node's port");
                     }
-                    state.send_replace(MapState::Unmapped);
+                    state.send_replace(MapState::Unmapped(e));
                 } else {
                     tracing::debug!(reason = %e, "renewing the port mapping failed");
                 }
@@ -183,6 +199,7 @@ async fn request(
     held: &mut Option<Held>,
     local_ip: Option<Ipv4Addr>,
     port: u16,
+    nat_pmp: Option<SocketAddrV4>,
 ) -> Result<(SocketAddrV4, Duration), String> {
     if let Some(mapping) = held {
         match mapping.renew().await {
@@ -192,6 +209,19 @@ async fn request(
                 *held = None;
             }
         }
+    }
+    if let Some(router) = nat_pmp {
+        return nat_pmp_map(router, port, port, LIFETIME)
+            .await
+            .map(|(external, lifetime)| {
+                *held = Some(Held::NatPmp {
+                    gateway: router,
+                    port,
+                    external_port: external.port(),
+                });
+                (external, lifetime)
+            })
+            .map_err(|e| format!("NAT-PMP: {e}"));
     }
     let Some(router) = netwatch::interfaces::HomeRouter::new() else {
         return Err("no default gateway".into());
@@ -406,8 +436,18 @@ async fn upnp_map(local: SocketAddrV4) -> Result<(Held, (SocketAddrV4, Duration)
     .await
     .map_err(|_| "no router answered the search".to_string())?
     .map_err(|e| format!("searching for the router: {e}"))?;
+    upnp_map_on(gateway, local).await
+}
+
+/// Asks the UPnP router `gateway` to forward outside port `local.port()` to
+/// `local`, or any outside port if that one is taken.
+async fn upnp_map_on(
+    gateway: Gateway,
+    local: SocketAddrV4,
+) -> Result<(Held, (SocketAddrV4, Duration)), String> {
     let granted = match upnp_add(&gateway, local, local.port()).await {
         Ok(granted) => granted,
+        Err(e) if e == PERMANENT_ONLY => return Err(e),
         Err(_) => {
             // Another device holds that outside port.
             let ip = upnp_external_ip(&gateway).await?;
@@ -419,7 +459,10 @@ async fn upnp_map(local: SocketAddrV4) -> Result<(Held, (SocketAddrV4, Duration)
                     DESCRIPTION,
                 )
                 .await
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| match e {
+                    AddAnyPortError::OnlyPermanentLeasesSupported => PERMANENT_ONLY.to_string(),
+                    e => e.to_string(),
+                })?;
             (
                 SocketAddrV4::new(ip, external_port),
                 Duration::from_secs(LIFETIME.into()),
@@ -442,27 +485,24 @@ async fn upnp_add(
     external_port: u16,
 ) -> Result<(SocketAddrV4, Duration), String> {
     let ip = upnp_external_ip(gateway).await?;
-    let add = |lease| {
-        gateway.add_port(
+    gateway
+        .add_port(
             PortMappingProtocol::UDP,
             external_port,
             local.into(),
-            lease,
+            LIFETIME,
             DESCRIPTION,
         )
-    };
-    let lifetime = match add(LIFETIME).await {
-        Ok(()) => LIFETIME,
-        // Some routers keep a mapping only until they restart, with no lease.
-        Err(AddPortError::OnlyPermanentLeasesSupported) => {
-            add(0).await.map_err(|e| e.to_string())?;
-            LIFETIME
-        }
-        Err(e) => return Err(e.to_string()),
-    };
+        .await
+        .map_err(|e| match e {
+            // Some routers keep a mapping only until they restart, with no
+            // lease; see the module's documentation.
+            AddPortError::OnlyPermanentLeasesSupported => PERMANENT_ONLY.to_string(),
+            e => e.to_string(),
+        })?;
     Ok((
         SocketAddrV4::new(ip, external_port),
-        Duration::from_secs(lifetime.into()),
+        Duration::from_secs(LIFETIME.into()),
     ))
 }
 
@@ -502,6 +542,11 @@ pub(crate) fn is_public(addr: &SocketAddr) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
     use super::*;
 
     #[test]
@@ -599,6 +644,107 @@ mod tests {
             .await
             .unwrap_err();
         assert!(e.to_string().contains("port mapping turned off"), "{e}");
+    }
+
+    /// A UPnP router on loopback that grants only permanent mappings: it
+    /// answers every request for a mapping with error 725. Returns the router
+    /// and the body of every request it has had.
+    async fn permanent_only_router() -> (Gateway, Arc<Mutex<Vec<String>>>) {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let log = seen.clone();
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let mut request = Vec::new();
+                let mut buf = [0u8; 4096];
+                let body = loop {
+                    let n = stream.read(&mut buf).await.unwrap();
+                    assert!(n > 0, "the request ended early");
+                    request.extend_from_slice(&buf[..n]);
+                    let text = String::from_utf8_lossy(&request).into_owned();
+                    let Some(end) = text.find("\r\n\r\n") else {
+                        continue;
+                    };
+                    let length = text[..end]
+                        .lines()
+                        .find_map(|l| {
+                            l.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|v| v.trim().parse::<usize>().unwrap())
+                        })
+                        .unwrap_or(0);
+                    if request.len() >= end + 4 + length {
+                        break text[end + 4..].to_string();
+                    }
+                };
+                let reply = if body.contains("GetExternalIPAddress") {
+                    "<u:GetExternalIPAddressResponse xmlns:u=\"urn:schemas-upnp-org:service:WANIPConnection:1\">\
+                     <NewExternalIPAddress>203.0.113.9</NewExternalIPAddress>\
+                     </u:GetExternalIPAddressResponse>"
+                } else {
+                    "<s:Fault><faultcode>s:Client</faultcode><faultstring>UPnPError</faultstring>\
+                     <detail><UPnPError xmlns=\"urn:schemas-upnp-org:control-1-0\">\
+                     <errorCode>725</errorCode><errorDescription>OnlyPermanentLeasesSupported</errorDescription>\
+                     </UPnPError></detail></s:Fault>"
+                };
+                log.lock().unwrap().push(body);
+                let envelope = format!(
+                    "<?xml version=\"1.0\"?><s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\">\
+                     <s:Body>{reply}</s:Body></s:Envelope>"
+                );
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{envelope}",
+                    envelope.len()
+                );
+                stream.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        let arguments = [
+            "NewRemoteHost",
+            "NewExternalPort",
+            "NewProtocol",
+            "NewInternalPort",
+            "NewInternalClient",
+            "NewEnabled",
+            "NewPortMappingDescription",
+            "NewLeaseDuration",
+        ]
+        .map(String::from)
+        .to_vec();
+        let gateway = Gateway {
+            addr,
+            root_url: "/".into(),
+            control_url: "/control".into(),
+            control_schema_url: "/scpd.xml".into(),
+            control_schema: [
+                ("AddPortMapping".to_string(), arguments.clone()),
+                ("AddAnyPortMapping".to_string(), arguments),
+            ]
+            .into(),
+            provider: Tokio,
+        };
+        (gateway, seen)
+    }
+
+    #[tokio::test]
+    async fn a_router_that_grants_only_permanent_mappings_is_not_used() {
+        let (gateway, seen) = permanent_only_router().await;
+        let e = upnp_map_on(gateway, "192.168.1.20:47321".parse().unwrap())
+            .await
+            .err()
+            .expect("no mapping");
+        assert_eq!(e, PERMANENT_ONLY);
+        let seen = seen.lock().unwrap();
+        let leases: Vec<_> = seen
+            .iter()
+            .filter(|body| body.contains("PortMapping"))
+            .map(|body| {
+                let start = body.find("<NewLeaseDuration>").unwrap() + "<NewLeaseDuration>".len();
+                body[start..body[start..].find('<').unwrap() + start].to_string()
+            })
+            .collect();
+        assert_eq!(leases, [LIFETIME.to_string()], "{seen:?}");
     }
 
     #[tokio::test]

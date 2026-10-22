@@ -70,6 +70,9 @@ pub struct NodeBuilder {
     bind: Option<SocketAddr>,
     port: Option<u16>,
     port_mapping: bool,
+    /// The NAT-PMP router to ask instead of the default gateway's.
+    #[cfg(test)]
+    nat_pmp: Option<std::net::SocketAddrV4>,
     authorizer: Option<Arc<dyn Authorizer>>,
     pairing: Option<Pairing>,
     waker: Option<Arc<dyn Waker>>,
@@ -84,7 +87,9 @@ impl Default for NodeBuilder {
             relays: Relays::None,
             bind: None,
             port: None,
-            port_mapping: true,
+            port_mapping: false,
+            #[cfg(test)]
+            nat_pmp: None,
             authorizer: None,
             pairing: None,
             waker: None,
@@ -129,14 +134,20 @@ impl NodeBuilder {
     }
 
     /// Whether to ask the router to forward this node's port from outside, by
-    /// NAT-PMP or UPnP, so that devices away from home can dial it. On by
-    /// default.
+    /// NAT-PMP or UPnP, so that devices away from home can dial it directly.
+    /// Off by default: off, the node sends the router no NAT-PMP, UPnP or PCP
+    /// request at all.
+    ///
+    /// Turned on, the router holds an inbound port that leads to this
+    /// machine, for as long as the node runs and up to two hours after it
+    /// stops without [`Node::shutdown`]. A router that grants only permanent
+    /// mappings, which would outlive the node, is not used.
     ///
     /// A node that serves an application asks for the outside port to equal
     /// its own, keeps the mapping renewed, and lists the outside address in
     /// [`Node::addr`]; [`Node::reach`] says whether the router granted it. A
     /// node that serves nothing leaves mapping to iroh, which lets the router
-    /// pick the port. Turned off, neither asks.
+    /// pick the port.
     pub fn port_mapping(mut self, on: bool) -> Self {
         self.port_mapping = on;
         self
@@ -212,8 +223,9 @@ impl NodeBuilder {
         // A back end maps its own port (see `portmap`), so iroh must not map
         // it as well.
         let maps_own_port = self.port_mapping && !handlers.is_empty();
+        let iroh_maps = self.port_mapping && !maps_own_port;
         let mut builder = Endpoint::builder(presets::Minimal);
-        if maps_own_port || !self.port_mapping {
+        if !iroh_maps {
             builder = builder.portmapper_config(PortmapperConfig::Disabled);
         }
         if let Some(key) = self.key {
@@ -256,8 +268,17 @@ impl NodeBuilder {
             .await
             .map_err(|e| Error::Bind(e.to_string()))?;
 
+        #[cfg(test)]
+        let nat_pmp = self.nat_pmp;
+        #[cfg(not(test))]
+        let nat_pmp = None;
         // The router can forward only to an IPv4 socket it can reach: not
         // one on loopback.
+        let unmapped = match (self.port_mapping, iroh_maps) {
+            (false, _) => "port mapping is off",
+            (true, true) => "the router forwarded no port",
+            (true, false) => "no IPv4 socket that a router can forward to",
+        };
         let mapper = if maps_own_port {
             endpoint
                 .bound_sockets()
@@ -268,7 +289,7 @@ impl NodeBuilder {
                 })
                 .map(|v4| {
                     let local_ip = Some(*v4.ip()).filter(|ip| !ip.is_unspecified());
-                    PortMapper::spawn(endpoint.clone(), local_ip, v4.port())
+                    PortMapper::spawn(endpoint.clone(), local_ip, v4.port(), nat_pmp)
                 })
         } else {
             None
@@ -289,7 +310,8 @@ impl NodeBuilder {
             endpoint,
             router,
             mapper,
-            iroh_maps: self.port_mapping && !maps_own_port,
+            unmapped,
+            iroh_maps,
             waker: self.waker,
             max_frame,
         })
@@ -303,6 +325,8 @@ pub struct Node {
     router: Option<Router>,
     /// Keeps a back end's port forwarded by the router.
     mapper: Option<PortMapper>,
+    /// Why no port is forwarded, when there is no mapper.
+    unmapped: &'static str,
     /// Whether iroh asks the router for a mapping instead.
     iroh_maps: bool,
     waker: Option<Arc<dyn Waker>>,
@@ -357,10 +381,10 @@ impl Node {
         let deadline = tokio::time::Instant::now() + timeout;
         let mapped = match &self.mapper {
             Some(mapper) => mapper.settled(deadline).await.map(SocketAddr::V4),
-            None => None,
+            None => Err(self.unmapped.to_string()),
         };
-        if let Some(external) = mapped.filter(is_public) {
-            return Reach::Public(external);
+        if let Some(external) = mapped.as_ref().ok().filter(|a| is_public(a)) {
+            return Reach::Public(*external);
         }
         let own_public = |addr: &iroh::EndpointAddr| addr.ip_addrs().copied().find(is_public);
         let mut watch = self.endpoint.watch_addr();
@@ -381,8 +405,8 @@ impl Node {
             return Reach::Public(public);
         }
         match mapped {
-            Some(external) => Reach::BehindNat(external),
-            None => Reach::Unmapped,
+            Ok(external) => Reach::BehindNat(external),
+            Err(reason) => Reach::Unmapped(reason),
         }
     }
 
@@ -573,10 +597,11 @@ pub enum Reach {
     /// itself: the home is behind its ISP's NAT (carrier-grade NAT) or behind
     /// a second router. Devices outside cannot reach the node without a relay.
     BehindNat(SocketAddr),
-    /// No port is forwarded: the router does not speak NAT-PMP or UPnP, has
-    /// them turned off, or was not asked. Devices outside cannot reach the
-    /// node without a relay.
-    Unmapped,
+    /// No port is forwarded, for the reason given: port mapping is off (the
+    /// default), or the router does not speak NAT-PMP or UPnP, has them
+    /// turned off, or grants only permanent mappings. Devices outside cannot
+    /// reach the node without a relay.
+    Unmapped(String),
 }
 
 /// The path a connection uses at one moment. More fields may come.
@@ -916,17 +941,69 @@ mod tests {
         node.shutdown().await;
     }
 
+    /// Binds a back end that asks the NAT-PMP router `nat_pmp`, if it asks
+    /// any router at all.
+    async fn back_end(builder: NodeBuilder, nat_pmp: &tokio::net::UdpSocket) -> Node {
+        let SocketAddr::V4(router) = nat_pmp.local_addr().unwrap() else {
+            unreachable!()
+        };
+        NodeBuilder {
+            nat_pmp: Some(router),
+            ..builder
+        }
+        .serve("echo", crate::Methods::new())
+        .bind()
+        .await
+        .unwrap()
+    }
+
+    /// Whether `router` hears anything within a second.
+    async fn heard(router: &tokio::net::UdpSocket) -> bool {
+        let mut buf = [0u8; 64];
+        tokio::time::timeout(Duration::from_secs(1), router.recv_from(&mut buf))
+            .await
+            .is_ok()
+    }
+
+    #[tokio::test]
+    async fn a_node_asks_no_router_unless_told_to() {
+        let router = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let node = back_end(Node::builder(), &router).await;
+        assert!(!heard(&router).await, "a default back end asked the router");
+        assert!(node.mapper.is_none() && !node.iroh_maps);
+        assert_eq!(
+            node.reach(Duration::from_secs(1)).await,
+            Reach::Unmapped("port mapping is off".into())
+        );
+        node.shutdown().await;
+
+        // Nor does a node that serves nothing, which would leave it to iroh.
+        let node = Node::builder().bind().await.unwrap();
+        assert!(node.mapper.is_none() && !node.iroh_maps);
+        node.shutdown().await;
+
+        // Told to, the same back end does ask.
+        let node = back_end(Node::builder().port_mapping(true), &router).await;
+        assert!(heard(&router).await, "the back end did not ask the router");
+        assert!(!node.iroh_maps);
+        node.shutdown().await;
+    }
+
     #[tokio::test]
     async fn a_back_end_on_loopback_says_at_once_that_it_is_unmapped() {
         let node = Node::builder()
             .bind_addr("127.0.0.1:0".parse().unwrap())
+            .port_mapping(true)
             .serve("echo", crate::Methods::new())
             .bind()
             .await
             .unwrap();
         assert!(node.mapper.is_none(), "a router cannot forward to loopback");
         let start = std::time::Instant::now();
-        assert_eq!(node.reach(Duration::from_secs(5)).await, Reach::Unmapped);
+        assert_eq!(
+            node.reach(Duration::from_secs(5)).await,
+            Reach::Unmapped("no IPv4 socket that a router can forward to".into())
+        );
         assert!(
             start.elapsed() < Duration::from_secs(1),
             "{:?}",

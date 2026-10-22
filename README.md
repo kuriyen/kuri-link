@@ -26,10 +26,12 @@ until they arrive.
 - **Pairing by QR code.** A back end issues one-time tickets: its address and a
   short-lived token, as text for a QR code. A device that redeems one joins the
   back end's paired set, which can be kept in a file across restarts.
-- **Home, reached from outside.** A back end asks the home router to forward
-  its port (NAT-PMP or UPnP) and keeps the same outside port across restarts,
-  so a phone on mobile data dials it directly, with nothing in between. When
-  the network makes that impossible, the back end says so.
+- **Home, reached from outside, if you choose.** Turned on, a back end asks
+  the home router to forward its port (NAT-PMP or UPnP) and keeps the same
+  outside port across restarts, so a phone on mobile data dials it directly,
+  with nothing in between. It is off by default, since it opens an inbound
+  port on the router. When the network makes it impossible, the back end says
+  so.
 - **No silent third parties.** Relays are off unless you name them — your own
   `iroh-relay`, or the public ones, by explicit choice.
 - **Evolvable payloads.** CBOR maps with named keys: a newer peer can add

@@ -124,13 +124,25 @@ What keeps it tight:
 ## Reaching a back end from outside
 
 A home back end is behind the home router's NAT, and its public IP is not
-fixed. Kuri Link reaches it from outside without a third party: no relay, no
-rendezvous service, no DNS name.
+fixed. By default it opens nothing: every connection is dialled out, so a
+device away from home reaches it only through a relay. A port forwarded by the
+router is an optimisation on top, a direct path with no relay in between, and
+it is the owner's choice, because it is an inbound port into the home: with
+`NodeBuilder::port_mapping(true)`, the router holds a port that leads to the
+back end's machine for as long as the node runs. Off, no node sends the router
+a NAT-PMP, UPnP or PCP request, iroh's own port mapping included.
+
+Turned on:
 
 - **The back end asks the router to forward its port**, by NAT-PMP (RFC 6886)
   or else UPnP, renewing every two minutes. Home routers grant this in their
   default settings. The outside address joins the node's own addresses, so
   tickets carry it, and a front end on mobile data dials it directly.
+- **Only mappings that lapse.** Each is asked for two hours and renewed;
+  `Node::shutdown` drops it, and one left by a crash lapses on its own. A
+  router that grants only permanent mappings is not used: such a mapping
+  outlives the node, until the router restarts, and by then the local address
+  it leads to may belong to another device.
 - **It asks for the outside port to equal its own.** iroh can map a port by
   itself, but it lets the router choose the outside port, and a router
   chooses a new one each time the node starts: measured on a home router, six
@@ -138,12 +150,13 @@ rendezvous service, no DNS name.
   same router granted it, and granted it again after a restart. With a kept
   port (`NodeBuilder::port`), a restart no longer changes the back end's
   public address. iroh's own mapping is therefore off on a node that serves
-  an application; a node that only calls keeps it.
+  an application; a node that only calls uses it.
 - **It says when it cannot be reached.** `Node::reach` reports `Public`,
   `BehindNat` (the router's own outside address is not public: carrier-grade
-  NAT, or a second router) or `Unmapped` (no router forwards the port). In
-  the last two cases no direct path from outside exists; that is the network's
-  shape, not a fault, and only a relay closes it.
+  NAT, or a second router) or `Unmapped` with the reason (mapping is off, or
+  no router forwards the port). In the last two cases no direct path from
+  outside exists; that is the network's shape, not a fault, and only a relay
+  closes it.
 
 ## Hooks
 
@@ -154,7 +167,7 @@ rendezvous service, no DNS name.
 | `Pairing` | off | let devices join by one-time ticket |
 | `Relays` | `None` | which relays may carry traffic |
 | `port` | random | the port a back end keeps, so its public address survives restarts |
-| `port_mapping` | on | ask the home router to forward the port |
+| `port_mapping` | off | ask the home router to forward the port: an inbound port into the home |
 | `Waker` | none | wake a sleeping back end before one retry |
 
 ## Not yet

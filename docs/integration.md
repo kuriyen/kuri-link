@@ -231,13 +231,15 @@ let pairing = Pairing::new(PeerSet::open("paired-devices")?);
 let node = Node::builder()
     .secret_key(load_or_create_key(Path::new("server.key"))?)
     .port(stored_port) // chosen once, kept like the key: see below
+    .port_mapping(owner_chose_it) // opens a port on the router: see below
     .relays(Relays::None)
     .pairing(pairing.clone())
     .serve(my_app_native::APP, my_app_native::methods())
     .bind()
     .await?;
 
-// Let the router answer first, so the ticket carries the public address.
+// With port mapping on, let the router answer first, so the ticket carries
+// the public address. Off, this returns at once.
 let reach = node.reach(Duration::from_secs(5)).await;
 // Show this as a QR code, next to the back end, when a device asks to pair.
 let ticket = pairing.issue(node.addr(), Duration::from_secs(120));
@@ -262,11 +264,20 @@ terminal.
 
 ### From outside the home
 
-A device away from home, such as a phone on mobile data, reaches the back end
-directly, with no relay and no service in between, when the home router
-forwards the back end's port. The back end asks for that itself, by NAT-PMP
-or UPnP, which home routers answer in their default settings. It asks for the
-outside port to be its own port, and renews the mapping while it runs.
+By default a back end opens no port on the home router, so a device away
+from home, such as a phone on mobile data, reaches it only through a relay
+(see [Relays](#relays)). Forwarding a port adds a direct path, with no relay
+and no service in between: turn it on with `NodeBuilder::port_mapping(true)`.
+The back end then asks the router itself, by NAT-PMP or UPnP, which home
+routers answer in their default settings. It asks for the outside port to be
+its own port, and renews the mapping while it runs.
+
+**What turning it on exposes:** the router holds an inbound port that leads to
+the back end's machine, for as long as the node runs; after a crash, until the
+mapping lapses, at most two hours. Anyone on the internet can send packets to
+that port. Only paired devices get past the handshake, but say so to the user
+and let them choose. A router that grants only permanent mappings, which
+would outlive the back end, is not used.
 
 - **Keep the port.** With `NodeBuilder::port`, the back end listens on the
   same port after a restart, and the router forwards the same outside port
@@ -282,7 +293,7 @@ outside port to be its own port, and renews the mapping while it runs.
   |---|---|
   | `Public(addr)` | Devices anywhere can dial `addr`. It is in `node.addr()`, so tickets issued from now on carry it. |
   | `BehindNat(addr)` | The router forwards a port, but its own outside address, `addr`, is not public: the ISP puts the home behind its NAT (carrier-grade NAT), or a second router stands in front. |
-  | `Unmapped` | The router forwards nothing: it does not speak NAT-PMP or UPnP, or has them turned off. |
+  | `Unmapped(reason)` | No port is forwarded: mapping is off, or the router does not speak NAT-PMP or UPnP, has them turned off, or grants only permanent mappings. `reason` says which. |
 
   In the last two cases devices outside cannot reach the back end without a
   relay, while devices on the home network still can. Tell the user so when
@@ -290,7 +301,6 @@ outside port to be its own port, and renews the mapping while it runs.
 - **What still changes the address** is a new public IP from the ISP. The
   back end notices within two minutes and lists the new address in
   `node.addr()`.
-- `NodeBuilder::port_mapping(false)` keeps the back end from asking.
 
 Only IPv4 is mapped and judged. The back end's global IPv6 addresses go into
 its address as well, but whether the router's firewall lets devices outside
