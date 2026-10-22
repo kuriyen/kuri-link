@@ -125,6 +125,9 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
   Backend dco_decode_box_autoadd_backend(dynamic raw);
 
   @protected
+  bool dco_decode_box_autoadd_bool(dynamic raw);
+
+  @protected
   FaultCode dco_decode_box_autoadd_fault_code(dynamic raw);
 
   @protected
@@ -162,6 +165,9 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
   dco_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
     dynamic raw,
   );
+
+  @protected
+  bool? dco_decode_opt_box_autoadd_bool(dynamic raw);
 
   @protected
   FaultCode? dco_decode_opt_box_autoadd_fault_code(dynamic raw);
@@ -281,6 +287,9 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
   Backend sse_decode_box_autoadd_backend(SseDeserializer deserializer);
 
   @protected
+  bool sse_decode_box_autoadd_bool(SseDeserializer deserializer);
+
+  @protected
   FaultCode sse_decode_box_autoadd_fault_code(SseDeserializer deserializer);
 
   @protected
@@ -318,6 +327,9 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
   sse_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
     SseDeserializer deserializer,
   );
+
+  @protected
+  bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer);
 
   @protected
   FaultCode? sse_decode_opt_box_autoadd_fault_code(
@@ -452,6 +464,9 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
   void sse_encode_box_autoadd_backend(Backend self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer);
+
+  @protected
   void sse_encode_box_autoadd_fault_code(
     FaultCode self,
     SseSerializer serializer,
@@ -502,6 +517,9 @@ abstract class KuriLinkLibApiImplPlatform extends BaseApiImpl<KuriLinkLibWire> {
     BackEndUpdates? self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer);
 
   @protected
   void sse_encode_opt_box_autoadd_fault_code(

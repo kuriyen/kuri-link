@@ -30,7 +30,7 @@ async fn a_front_end_pairs_by_ticket_text_then_calls() {
 
     let name = format!("kuri-link-{}.key", NodeKey::generate().public().fmt_short());
     let key = std::env::temp_dir().join(name);
-    let node = LinkNode::start(key.display().to_string(), Vec::new())
+    let node = LinkNode::start(key.display().to_string(), Vec::new(), None)
         .await
         .unwrap();
     assert!(

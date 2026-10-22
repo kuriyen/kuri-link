@@ -302,7 +302,7 @@ would outlive the back end, is not used.
   back end notices within two minutes, and the devices connected to it learn
   the new address at once (see "Keep the stored address current" under
   [Pair](#5-pair)). A device that is away and not connected at that moment
-  learns it once it is back on the home network.
+  learns it once it is back on the home network, if mDNS is on (see below).
 
 Only IPv4 is mapped and judged. The back end's global IPv6 addresses go into
 its address as well, but whether the router's firewall lets devices outside
@@ -455,11 +455,22 @@ The full version, which also unregisters the callback, is
 On Linux iroh notices network changes by itself; calling `networkChanged()`
 there does no harm.
 
-**At home, the back end is found by mDNS.** A back end announces its key and
-addresses on the local network, and a node looks peers up there when it
-dials. So a device back on the home network finds the back end even if its
-address there changed, and learns its new public address from it. Android
-drops multicast packets before they reach an app that does not hold a
+**At home, the back end can be found by mDNS.** Off by default; turn it on
+with `NodeBuilder::local_discovery(true)` on the back end and
+`LinkNode.start(..., localDiscovery: true)` on the device. The back end then
+announces its key and addresses on the local network, and the device looks
+peers up there when it dials. So a device back on the home network finds the
+back end even if its address there changed, and learns its new public address
+from it. **What it exposes:** everyone on that network, guests and housemates
+included, sees the back end's key and addresses, and the device's lookups;
+only paired devices get any further. Say so where the user turns it on.
+
+Without it, a device knows only the addresses the back end gave it: at
+pairing, and pushed over `kuri-link.addr` while it was connected. When the
+back end's address changes while the device is not connected, the device
+reaches it again only through a relay, or by pairing again.
+
+Android drops multicast packets before they reach an app that does not hold a
 multicast lock, so take one while the app runs, with
 `<uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>`
 in the manifest:
@@ -475,9 +486,8 @@ val multicast = wifi.createMulticastLock("my_app/mdns").apply {
 // multicast.release() in cleanUpFlutterEngine.
 ```
 
-`MainActivity.kt` in `examples/app` does both. In Rust,
-`NodeBuilder::local_discovery(false)` turns discovery off; a node that serves
-nothing never announces itself.
+`MainActivity.kt` in `examples/app` does both, when the app asks for it. A
+node that serves nothing never announces itself.
 
 **A back end only reachable at home is given up on in five seconds.** When
 none of a back end's addresses can be reached from outside its own network

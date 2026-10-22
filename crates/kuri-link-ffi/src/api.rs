@@ -150,7 +150,16 @@ impl LinkNode {
     /// `relays` empty means direct paths only. A node uses only the relays it
     /// started with, so to reach a back end through its relays, start the node
     /// with them: see `ticket_back_end`.
-    pub async fn start(key_path: String, relays: Vec<String>) -> Result<LinkNode, LinkError> {
+    ///
+    /// `local_discovery` set to true looks back ends up on the local network by
+    /// mDNS, so a device at home finds its back end even after the back end's
+    /// address there changed. Off when not given: off, the node sends no mDNS
+    /// packet. On, everyone on the same network can see the node's lookups.
+    pub async fn start(
+        key_path: String,
+        relays: Vec<String>,
+        local_discovery: Option<bool>,
+    ) -> Result<LinkNode, LinkError> {
         let key = kuri_link::load_or_create_key(&PathBuf::from(&key_path))
             .map_err(|e| LinkError::new(format!("key file {key_path}: {e}")))?;
         let urls = relays
@@ -166,6 +175,7 @@ impl LinkNode {
         let inner = Node::builder()
             .secret_key(key)
             .relays(mode)
+            .local_discovery(local_discovery.unwrap_or(false))
             .bind()
             .await
             .map_err(LinkError::other)?;

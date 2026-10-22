@@ -28,11 +28,18 @@ use crate::wire::{
 /// [`Client`] asks for it once it makes a request, and dials the address it
 /// learns from then on ([`Client::peer_addr`]).
 ///
-/// Reserved: a [`Service`] never sees a request for it. An [`Authorizer`] is
-/// asked about it like any other method, and asked again before each change
-/// is sent; one that refuses it only keeps the caller from learning of
-/// changes.
+/// Reserved (see [`RESERVED_PREFIX`]): a [`Service`] never sees a request
+/// for it. An [`Authorizer`] is asked about it like any other method, and
+/// asked again before each change is sent; one that refuses it only keeps the
+/// caller from learning of changes.
 pub const ADDR_METHOD: &str = "kuri-link.addr";
+
+/// The prefix of the method names Kuri Link keeps for itself, such as
+/// [`ADDR_METHOD`], which every application a node serves answers. A request
+/// for one never reaches an application's [`Service`], and
+/// [`NodeBuilder::bind`] refuses a service that lists one among its
+/// [`Service::method_names`].
+pub const RESERVED_PREFIX: &str = "kuri-link.";
 
 /// The DNS-SD service a node announces itself under on the local network.
 const MDNS_SERVICE: &str = "kuri-link";
@@ -119,7 +126,7 @@ impl Default for NodeBuilder {
             port_mapping: false,
             #[cfg(test)]
             nat_pmp: None,
-            local_discovery: true,
+            local_discovery: false,
             authorizer: None,
             pairing: None,
             waker: None,
@@ -183,12 +190,16 @@ impl NodeBuilder {
         self
     }
 
-    /// Whether to use mDNS on the local network. On by default.
+    /// Whether to use mDNS on the local network. Off by default: off, the
+    /// node neither announces itself nor looks peers up, and sends no mDNS
+    /// packet.
     ///
-    /// A node that serves an application announces its key and addresses
-    /// there, so devices at home find it even after its address on the home
-    /// network changed. Every node looks peers up that way when it dials, but
-    /// only a node that serves announces itself. A node bound to loopback does
+    /// Turned on, a node that serves an application announces its key and
+    /// addresses there, so devices at home find it even after its address on
+    /// the home network changed. Everyone on that network then sees the key
+    /// and addresses, though only devices the node admits get any further.
+    /// Every node with it on looks peers up that way when it dials, but only a
+    /// node that serves announces itself. A node bound to loopback does
     /// neither.
     pub fn local_discovery(mut self, on: bool) -> Self {
         self.local_discovery = on;
@@ -238,6 +249,18 @@ impl NodeBuilder {
             (None, None) => Arc::new(DenyAll),
         };
         let max_frame = self.max_frame;
+        for (app, service) in &self.apps {
+            if let Some(name) = service
+                .method_names()
+                .into_iter()
+                .find(|name| name.starts_with(RESERVED_PREFIX))
+            {
+                return Err(Error::Bind(format!(
+                    "application {app:?}: method names starting with \
+                     {RESERVED_PREFIX:?}, such as {name:?}, are reserved for Kuri Link"
+                )));
+            }
+        }
         let mut apps: Vec<Served> = self
             .apps
             .into_iter()
@@ -1100,6 +1123,10 @@ impl AppHandler {
         if header.op == Op::Open && header.method == ADDR_METHOD {
             return self.send_addr(request, send).await;
         }
+        if header.method.starts_with(RESERVED_PREFIX) {
+            let fault = fault_of(AppError::NoSuchMethod(header.method));
+            return refuse(&mut send, fault, max).await;
+        }
 
         match header.op {
             Op::Call => {
@@ -1281,6 +1308,32 @@ mod tests {
         let node = back_end(Node::builder().port_mapping(true), &router).await;
         assert!(heard(&router).await, "the back end did not ask the router");
         assert!(!node.iroh_maps);
+        node.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn a_node_uses_mdns_only_when_told_to() {
+        // On every interface, where mDNS would run.
+        let mdns = |node: &Node| node.endpoint.address_lookup().unwrap().len();
+        let node = Node::builder()
+            .serve("echo", crate::Methods::new())
+            .bind()
+            .await
+            .unwrap();
+        assert_eq!(mdns(&node), 0, "a default back end uses mDNS");
+        node.shutdown().await;
+
+        let node = Node::builder().bind().await.unwrap();
+        assert_eq!(mdns(&node), 0, "a default front end uses mDNS");
+        node.shutdown().await;
+
+        let node = Node::builder()
+            .local_discovery(true)
+            .serve("echo", crate::Methods::new())
+            .bind()
+            .await
+            .unwrap();
+        assert_eq!(mdns(&node), 1, "told to, the back end does not use mDNS");
         node.shutdown().await;
     }
 

@@ -52,10 +52,17 @@ depend on a tag.
   `Client::peer_addr()` is the address as the client knows it, and
   `Client::peer_addr_updates()` follows its changes, so an app can keep it. A
   back end from before this release refuses the method, and nothing changes.
-- Nodes announce and look each other up on the local network by mDNS, so a
-  device at home finds its back end even after the back end's address there
-  changed. Only a node that serves an application announces itself.
-  `NodeBuilder::local_discovery(false)` turns this off.
+- Method names starting with `RESERVED_PREFIX` (`kuri-link.`) are kept for
+  Kuri Link. A request for one never reaches an application's `Service`, and
+  `NodeBuilder::bind` refuses a service that lists one among its
+  `Service::method_names()`, a new method whose default lists none; `Methods`
+  lists its own.
+- With `NodeBuilder::local_discovery(true)`, nodes announce and look each
+  other up on the local network by mDNS, so a device at home finds its back
+  end even after the back end's address there changed. Only a node that
+  serves an application announces itself, and everyone on that network then
+  sees its key and addresses. Off by default: off, a node sends no mDNS
+  packet.
 - Connecting to a back end whose every address is on its own network, with
   no relay, gives up after five seconds instead of thirty, and the error says
   that only a device on that network can reach it.
@@ -65,9 +72,14 @@ depend on a tag.
 - `LinkClient.backEnd()` and `LinkClient.backEndUpdates()`: the back end's
   address as the client knows it, and its changes, to store in place of the
   one kept from pairing.
+- `LinkNode.start(..., localDiscovery: true)` looks back ends up on the local
+  network by mDNS. Off when not given.
 
 ### Examples
 
+- `kuri-link-echo-server` announces itself on the local network by mDNS, and
+  the example app looks it up there; both say that everyone on that network
+  can see them. On Android the app takes a multicast lock for it.
 - `kuri-link-echo-server --port-mapping` asks the router to forward its port,
   and waits up to five seconds for the answer before it issues its ticket, so
   the ticket carries the public address. Either way, the server says whether

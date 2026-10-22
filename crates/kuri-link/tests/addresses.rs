@@ -1,15 +1,17 @@
 //! A back end's address as its front ends know it: told by the back end,
 //! dialed from then on, and given up on quickly when it cannot be reached
 //! from here. Over real iroh endpoints, with relays, port mapping and mDNS
-//! off, so these tests need no router and no third party.
+//! off, so these tests need no router and no third party. Also the method
+//! names reserved for that.
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::time::{Duration, Instant};
 
 use kuri_link::{
-    Allowlist, AuthRequest, Authorizer, BoxFuture, Caller, Denied, Methods, Node, NodeKey,
-    PeerAddr, PeerId, Relays, Route, Value, ADDR_METHOD,
+    Allowlist, AppError, AuthRequest, Authorizer, BoxFuture, CallError, Caller, Denied, FaultCode,
+    Methods, Node, NodeKey, PeerAddr, PeerId, Relays, Route, Service, Value, ADDR_METHOD,
 };
+use std::sync::Arc;
 
 const APP: &str = "echo";
 
@@ -181,4 +183,56 @@ async fn a_back_end_reachable_only_on_its_own_network_is_given_up_on_soon() {
         "{e}"
     );
     client_node.shutdown().await;
+}
+
+/// Answers every method it is asked, reserved ones included, with its name.
+struct AnswersAnything;
+
+impl Service for AnswersAnything {
+    fn call(
+        self: Arc<Self>,
+        _caller: Caller,
+        method: String,
+        _args: Value,
+    ) -> BoxFuture<'static, Result<Value, AppError>> {
+        Box::pin(async move { Ok(Value::Text(method)) })
+    }
+}
+
+#[tokio::test]
+async fn a_method_name_reserved_for_kuri_link_cannot_be_served() {
+    let refused = Node::builder()
+        .bind_addr(loopback())
+        .serve(
+            APP,
+            echo().unary("kuri-link.mine", |_, args| async move { Ok(args) }),
+        )
+        .bind()
+        .await
+        .expect_err("a reserved name is refused");
+    assert!(refused.to_string().contains("reserved"), "{refused}");
+
+    // A service that cannot list its methods never sees a reserved one.
+    let key = NodeKey::generate();
+    let server = Node::builder()
+        .relays(Relays::None)
+        .bind_addr(loopback())
+        .authorizer(Allowlist::new([key.public()]))
+        .serve(APP, AnswersAnything)
+        .bind()
+        .await
+        .unwrap();
+    let client_node = client_with(key).await;
+    let client = client_node.connect(server.bound_addr(), APP).await.unwrap();
+    let mine = Value::Text("mine".into());
+    assert_eq!(client.call("mine", Value::Null).await.unwrap(), mine);
+    for reserved in [ADDR_METHOD, "kuri-link.other"] {
+        match client.call(reserved, Value::Null).await {
+            Err(CallError::Fault(fault)) => assert_eq!(fault.code, FaultCode::NoSuchMethod),
+            other => panic!("{reserved}: {other:?}"),
+        }
+    }
+
+    client_node.shutdown().await;
+    server.shutdown().await;
 }

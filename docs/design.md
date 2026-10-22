@@ -50,8 +50,11 @@ addr:  C→S Header{v:1, op:"open", method:"kuri-link.addr", cred?} [FIN]
        "relay": ["url", …]?}: the back end's address now, then each change
 ```
 
-- **One reserved method.** Every application a back end serves answers
-  `kuri-link.addr` itself, without its service seeing it: an `open` whose
+- **Reserved method names.** Names starting with `kuri-link.` belong to the
+  library, not to applications: a request for one never reaches a service,
+  and a node refuses at `bind` a service that lists one. One is defined.
+  Every application a back end serves answers `kuri-link.addr` itself: an
+  `open` whose
   stream carries the back end's own address, then each change of it, at most
   one a second. A client asks once it makes its first request, with that
   request's credential, so the authorizer decides as for any method, and
@@ -176,15 +179,19 @@ Turned on:
   `kuri-link.addr` (see the wire format) while they are connected, and as soon
   as they connect again; `Client::peer_addr` is what they dial from then on,
   and what the app keeps.
-- **At home, it announces itself.** A back end announces its key and
-  addresses on the local network by mDNS (service `kuri-link`), and every node
-  looks peers up that way when it dials. So a device back on the home network
-  finds the back end whatever its address there has become. Front ends look
-  up without announcing themselves.
-- **What remains.** A device that is away from home, and not connected, while
+- **At home, if the owner chooses, it announces itself.** Sharing a network
+  is not consent to be seen on it, so mDNS is off by default: a node then
+  sends no mDNS packet. With `local_discovery(true)`, a back end announces its
+  key and addresses on the local network (service `kuri-link`), and every node
+  with it on looks peers up that way when it dials. So a device back on the
+  home network finds the back end whatever its address there has become.
+  Everyone on that network sees the key and addresses, though only paired
+  devices get further. Front ends look up without announcing themselves.
+- **What remains.** Without mDNS, a back end whose address changed is found
+  again only through what `kuri-link.addr` pushed before the change, or
+  through a relay. A device that is away from home, and not connected, while
   the home's public IP changes does not learn the new one until it is back on
-  the home network. Nothing outside the home could tell it without a third
-  party.
+  the home network, and then only with mDNS on.
 
 ## Hooks
 
@@ -196,7 +203,7 @@ Turned on:
 | `Relays` | `None` | which relays may carry traffic |
 | `port` | random | the port a back end keeps, so its public address survives restarts |
 | `port_mapping` | off | ask the home router to forward the port: an inbound port into the home |
-| `local_discovery` | on | announce and look up nodes on the local network (mDNS) |
+| `local_discovery` | off | announce and look up nodes on the local network (mDNS): seen by everyone on it |
 | `Waker` | none | wake a sleeping back end before one retry |
 
 ## Not yet

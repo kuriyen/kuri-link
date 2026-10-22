@@ -106,12 +106,19 @@ abstract class LinkNode implements RustOpaqueInterface {
   /// `relays` empty means direct paths only. A node uses only the relays it
   /// started with, so to reach a back end through its relays, start the node
   /// with them: see `ticket_back_end`.
+  ///
+  /// `local_discovery` set to true looks back ends up on the local network by
+  /// mDNS, so a device at home finds its back end even after the back end's
+  /// address there changed. Off when not given: off, the node sends no mDNS
+  /// packet. On, everyone on the same network can see the node's lookups.
   static Future<LinkNode> start({
     required String keyPath,
     required List<String> relays,
+    bool? localDiscovery,
   }) => KuriLinkLib.instance.api.crateApiLinkNodeStart(
     keyPath: keyPath,
     relays: relays,
+    localDiscovery: localDiscovery,
   );
 }
 

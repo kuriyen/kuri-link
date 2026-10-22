@@ -18,6 +18,10 @@
 //! that leads to this machine until the server stops. Without the flag it asks
 //! nothing. Either way, it says whether devices outside can reach it.
 //!
+//! The server announces itself on the local network by mDNS, so a device at
+//! home finds it even after its address there changed. Everyone on that
+//! network can see its key and addresses; only paired devices get in.
+//!
 //! `--peers` keeps the paired devices across restarts, and `--key` keeps the
 //! server's own key. With `--port` too, the router forwards the same outside
 //! port after a restart, so a front end paired once still finds the server,
@@ -85,6 +89,7 @@ async fn run() -> Result<(), String> {
             Relays::Custom(relays.clone())
         })
         .port_mapping(port_mapping)
+        .local_discovery(true)
         .pairing(pairing.clone())
         .serve(kuri_link_echo::APP, kuri_link_echo::methods());
     if let Some(key) = key {
@@ -135,6 +140,13 @@ async fn run() -> Result<(), String> {
         TICKET_TTL.as_secs() / 60,
     );
     eprintln!("{}", describe(&reach, port_mapping));
+    // A node bound to loopback does not use mDNS.
+    if !bind.is_some_and(|addr| addr.ip().is_loopback()) {
+        eprintln!(
+            "announced on this network by mDNS: devices on it can see this \
+             server's key and addresses, and only paired ones get in"
+        );
+    }
     std::future::pending::<()>().await;
     Ok(())
 }

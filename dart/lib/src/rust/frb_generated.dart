@@ -130,6 +130,7 @@ abstract class KuriLinkLibApi extends BaseApi {
   Future<LinkNode> crateApiLinkNodeStart({
     required String keyPath,
     required List<String> relays,
+    bool? localDiscovery,
   });
 
   Future<void> crateApiLinkStreamFinish({required LinkStream that});
@@ -653,6 +654,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   Future<LinkNode> crateApiLinkNodeStart({
     required String keyPath,
     required List<String> relays,
+    bool? localDiscovery,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -660,6 +662,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(keyPath, serializer);
           sse_encode_list_String(relays, serializer);
+          sse_encode_opt_box_autoadd_bool(localDiscovery, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -673,7 +676,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
           decodeErrorData: sse_decode_link_error,
         ),
         constMeta: kCrateApiLinkNodeStartConstMeta,
-        argValues: [keyPath, relays],
+        argValues: [keyPath, relays, localDiscovery],
         apiImpl: this,
       ),
     );
@@ -681,7 +684,7 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
 
   TaskConstMeta get kCrateApiLinkNodeStartConstMeta => const TaskConstMeta(
     debugName: "LinkNode_start",
-    argNames: ["keyPath", "relays"],
+    argNames: ["keyPath", "relays", "localDiscovery"],
   );
 
   @override
@@ -1058,6 +1061,12 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   }
 
   @protected
+  bool dco_decode_box_autoadd_bool(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as bool;
+  }
+
+  @protected
   FaultCode dco_decode_box_autoadd_fault_code(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_fault_code(raw);
@@ -1153,6 +1162,12 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
         : dco_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
             raw,
           );
+  }
+
+  @protected
+  bool? dco_decode_opt_box_autoadd_bool(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_bool(raw);
   }
 
   @protected
@@ -1407,6 +1422,12 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   }
 
   @protected
+  bool sse_decode_box_autoadd_bool(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_bool(deserializer));
+  }
+
+  @protected
   FaultCode sse_decode_box_autoadd_fault_code(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_fault_code(deserializer));
@@ -1507,6 +1528,17 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
       return (sse_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerBackEndUpdates(
         deserializer,
       ));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_bool(deserializer));
     } else {
       return null;
     }
@@ -1790,6 +1822,12 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
   }
 
   @protected
+  void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_fault_code(
     FaultCode self,
     SseSerializer serializer,
@@ -1900,6 +1938,16 @@ class KuriLinkLibApiImpl extends KuriLinkLibApiImplPlatform
         self,
         serializer,
       );
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_bool(self, serializer);
     }
   }
 

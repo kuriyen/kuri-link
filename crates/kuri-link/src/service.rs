@@ -85,6 +85,15 @@ pub trait Service: Send + Sync + 'static {
         let _ = (caller, args);
         Box::pin(async move { Err(AppError::NoSuchMethod(method)) })
     }
+
+    /// The names of the methods this service answers, where it can list them.
+    /// [`NodeBuilder::bind`](crate::NodeBuilder::bind) refuses a service that
+    /// lists one starting with [`RESERVED_PREFIX`](crate::RESERVED_PREFIX). A
+    /// request for such a name never reaches a service either way. The
+    /// default lists none.
+    fn method_names(&self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 /// Converts a serializable value to a CBOR [`Value`].
@@ -206,5 +215,13 @@ impl Service for Methods {
             });
             Ok(run)
         })
+    }
+
+    fn method_names(&self) -> Vec<String> {
+        self.unary
+            .keys()
+            .chain(self.duplex.keys())
+            .cloned()
+            .collect()
     }
 }

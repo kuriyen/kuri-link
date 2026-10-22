@@ -14,6 +14,10 @@
 // A back end started with --relay names its relays in the ticket, and the app
 // starts its node with them, so it can reach the back end from another
 // network.
+//
+// The app looks its back end up on the local network by mDNS
+// (`localDiscovery`), so at home it finds the back end even after the back
+// end's address there changed. Everyone on that network can see the lookups.
 
 import 'dart:convert';
 import 'dart:ffi';
@@ -29,6 +33,11 @@ import 'package:path_provider/path_provider.dart';
 import 'probe.dart';
 
 const app = 'echo';
+
+/// Whether the node looks back ends up on the local network by mDNS. On
+/// Android that also needs a multicast lock, which `MainActivity` takes when
+/// asked.
+const localDiscovery = true;
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -72,7 +81,11 @@ Future<LinkNode> startLink(
     'kuri_link_echo_register',
   )();
   await Directory(dataDir).create(recursive: true);
-  return LinkNode.start(keyPath: keyPath(dataDir), relays: relays);
+  return LinkNode.start(
+    keyPath: keyPath(dataDir),
+    relays: relays,
+    localDiscovery: localDiscovery,
+  );
 }
 
 /// The paired back end's address, kept across launches.
@@ -131,13 +144,17 @@ class _EchoAppState extends State<EchoApp> {
   final ticket = TextEditingController();
 
   /// On Android, `MainActivity` reports here when the network changes, which
-  /// the node cannot see by itself there.
+  /// the node cannot see by itself there, and takes the multicast lock that
+  /// mDNS needs when asked.
   static const network = MethodChannel('kuri_link_example/network');
 
   @override
   void initState() {
     super.initState();
     network.setMethodCallHandler((_) => node.networkChanged());
+    if (localDiscovery && Platform.isAndroid) {
+      network.invokeMethod<void>('holdMulticastLock');
+    }
     open();
   }
 
@@ -214,6 +231,7 @@ class _EchoAppState extends State<EchoApp> {
     node = await LinkNode.start(
       keyPath: keyPath(widget.dataDir),
       relays: backEnd.relays,
+      localDiscovery: localDiscovery,
     );
     await old.shutdown();
   }

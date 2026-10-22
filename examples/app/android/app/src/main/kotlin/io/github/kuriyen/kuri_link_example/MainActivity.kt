@@ -15,10 +15,10 @@ import io.flutter.plugin.common.MethodChannel
 // activity watches the default network and reports each change to Dart, which
 // passes it on to the Kuri Link node.
 //
-// It also holds a multicast lock while the app runs. Without one, Android drops
-// multicast packets before they reach the app, so the node cannot hear the
-// back end announce itself on the home network (mDNS), and cannot find it there
-// once its address changed.
+// When Dart asks, because the node uses mDNS, it also holds a multicast lock
+// while the app runs. Without one, Android drops multicast packets before they
+// reach the app, so the node cannot hear the back end announce itself on the
+// home network, and cannot find it there once its address changed.
 class MainActivity : FlutterActivity() {
     private var callback: ConnectivityManager.NetworkCallback? = null
     private var multicast: WifiManager.MulticastLock? = null
@@ -44,6 +44,18 @@ class MainActivity : FlutterActivity() {
         connectivity().registerDefaultNetworkCallback(watch)
         callback = watch
 
+        channel.setMethodCallHandler { call, result ->
+            if (call.method == "holdMulticastLock") {
+                holdMulticastLock()
+                result.success(null)
+            } else {
+                result.notImplemented()
+            }
+        }
+    }
+
+    private fun holdMulticastLock() {
+        if (multicast != null) return
         val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
         multicast = wifi.createMulticastLock(MULTICAST_LOCK).apply {
             setReferenceCounted(false)

@@ -24,10 +24,12 @@ final sum = cbor.decode(await client.call(
     method: 'add', argsCbor: cbor.encode(CborList([CborSmallInt(2), CborSmallInt(3)]))));
 ```
 
-- `LinkNode.start(keyPath, relays)`: this device's identity and endpoint. The
-  key file is created on first start and keeps the device the same across
-  launches. `relays` empty means direct paths only. A node uses only the
-  relays it started with; `node.relays()` lists them.
+- `LinkNode.start(keyPath, relays, localDiscovery)`: this device's identity
+  and endpoint. The key file is created on first start and keeps the device
+  the same across launches. `relays` empty means direct paths only. A node
+  uses only the relays it started with; `node.relays()` lists them.
+  `localDiscovery: true` looks back ends up on the local network by mDNS,
+  where everyone can see the lookups; off when not given.
 - `ticketBackEnd(ticket)`: the back end a ticket names, without redeeming it.
   To reach a back end through its relays, start the node with
   `ticketBackEnd(ticket).relays` before pairing.

@@ -54,6 +54,7 @@ pub use hooks::{
 pub use local::register_local;
 pub use node::{
     CallError, Client, Error, Node, NodeBuilder, PathInfo, Reach, Relays, Route, ADDR_METHOD,
+    RESERVED_PREFIX,
 };
 pub use pairing::{PairError, PairToken, Pairing, Ticket, TicketError, PAIR_APP, PAIR_METHOD};
 pub use peers::PeerSet;
