@@ -385,11 +385,12 @@ Kuri Link uses no relay unless you name one:
   that the iroh maintainers run. That is a third party; choose it explicitly
   or not at all.
 
-A node uses only the relays it started with. To reach a back end through the
-relays it names, start the node with them: `ticketBackEnd(ticket:).relays`
-before pairing, the stored address's `relays` after. To change relays, shut
-the node down and start it again from the same key file; it is still the same
-device to every back end:
+A node uses only the relays it started with; a back end behind a gateway also
+dials the gateway through the relays in the gateway's address. To reach a back
+end through the relays it names, start the node with them:
+`ticketBackEnd(ticket:).relays` before pairing, the stored address's `relays`
+after. To change relays, shut the node down and start it again from the same
+key file; it is still the same device to every back end:
 
 ```dart
 Future<LinkNode> restartWithRelays(

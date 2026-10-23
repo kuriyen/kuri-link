@@ -94,7 +94,7 @@ docs/design.md            wire format and design decisions
 ## Build and test
 
 ```sh
-cargo test --workspace     # end-to-end over loopback; no network, no relays
+cargo test --workspace     # end-to-end over loopback, a relay included; no network
 cargo build -p kuri-link-echo && (cd dart && dart test)   # the same from Dart
 ```
 

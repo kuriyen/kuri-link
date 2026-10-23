@@ -62,7 +62,8 @@ const LOCAL_DIAL: Duration = Duration::from_secs(5);
 /// which is end-to-end encrypted). So it is always an explicit choice.
 #[derive(Debug, Clone)]
 pub enum Relays {
-    /// Direct paths only: LAN, or addresses known out of band.
+    /// Direct paths only: LAN, or addresses known out of band. A node behind
+    /// a gateway still reaches the gateway through the gateway's relays.
     None,
     /// Relays you run, e.g. `iroh-relay` on your own host.
     Custom(Vec<RelayUrl>),
@@ -269,6 +270,9 @@ impl NodeBuilder {
     /// gateway refuses, the node dials again, waiting longer each time, up to
     /// half a minute; [`Node::registration`] says where it stands, and
     /// [`Node::gateway_addr`] is the gateway's address as it last heard.
+    /// It dials through the relays in that address as well, even with
+    /// [`Relays::None`], so a gateway that uses a relay is found wherever its
+    /// address has gone.
     ///
     /// A forwarded request's [`Caller`] is the front end the gateway
     /// vouches for, with the gateway's claims. With
@@ -379,6 +383,12 @@ impl NodeBuilder {
             builder = builder.secret_key(key.into_iroh());
         }
         builder = match self.relays {
+            // No relay of its own, but those in the gateway's address can
+            // still carry the connection to it: a back end finds a gateway
+            // that moved by its key.
+            Relays::None if self.behind.is_some() => {
+                builder.relay_mode(RelayMode::custom(std::iter::empty()))
+            }
             Relays::None => builder.relay_mode(RelayMode::Disabled),
             Relays::Custom(urls) => {
                 builder.relay_mode(RelayMode::custom(urls.iter().map(RelayUrl::to_iroh)))

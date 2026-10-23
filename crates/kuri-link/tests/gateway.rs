@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use kuri_link::{
     Allowlist, CallError, FaultCode, Gateway, Methods, Node, NodeKey, PairError, Pairing, PeerAddr,
-    PeerSet, Registration, Relays, Value, GATEWAY_APP,
+    PeerSet, Registration, RelayUrl, Relays, Value, GATEWAY_APP,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -441,4 +441,47 @@ async fn a_back_end_registering_again_takes_its_requests_off_the_old_connection(
     phone.shutdown().await;
     new.shutdown().await;
     home.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_back_end_with_no_relay_of_its_own_finds_its_gateway_through_the_gateways() {
+    let mut config = iroh_relay::server::ServerConfig::default();
+    config.relay = Some(iroh_relay::server::RelayConfig::new(loopback()));
+    let relay = iroh_relay::server::Server::spawn(config)
+        .await
+        .expect("the relay runs");
+    let url: RelayUrl = format!("http://{}", relay.http_addr().unwrap())
+        .parse()
+        .unwrap();
+    let phones = Pairing::new(PeerSet::new());
+    let gateway = Gateway::new(PeerSet::new());
+    let home = Node::builder()
+        .relays(Relays::Custom(vec![url.clone()]))
+        .bind_addr(loopback())
+        .pairing(phones.clone())
+        .gateway(gateway.clone())
+        .bind()
+        .await
+        .unwrap();
+
+    // Its key and its relay, and no address: as for a gateway that moved
+    // since.
+    let moved = PeerAddr::new(home.id()).with_relay(url);
+    let camera = back_end(moved.clone(), NodeKey::generate(), "camera").await;
+    camera
+        .pair_gateway(&gateway.pairing().issue(moved, MINUTE))
+        .await
+        .expect("pairs through the relay");
+    settles(&camera, |r| *r == Registration::Registered).await;
+    let phone = phone().await;
+    phone
+        .pair(&phones.issue(home.bound_addr(), MINUTE))
+        .await
+        .unwrap();
+    assert_eq!(who_echoes(&phone, &home).await.unwrap(), "camera");
+
+    phone.shutdown().await;
+    camera.shutdown().await;
+    home.shutdown().await;
+    let _ = relay.shutdown().await;
 }

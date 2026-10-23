@@ -1967,6 +1967,7 @@ dependencies = [
  "igd-next",
  "iroh",
  "iroh-mdns-address-lookup",
+ "iroh-relay",
  "netwatch",
  "serde",
  "serde_bytes",

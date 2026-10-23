@@ -41,6 +41,8 @@ depend on a tag.
   answers its requests with `FaultCode::Unavailable`. A back end that stops
   without closing its connection is taken for gone after 10 seconds of
   silence, and one that registers again replaces its old connection at once.
+  A back end dials the gateway through the relays in the gateway's address
+  even with `Relays::None`, so a gateway that moved is found by its key.
 - `PeerAddr` has a text form (`Display` and `FromStr`) for keeping an address
   in a file: the key, then each direct address and relay, separated by
   spaces.

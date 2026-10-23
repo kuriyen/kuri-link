@@ -29,6 +29,8 @@ getrandom = "0.4"
 igd-next = { version = "0.17", features = ["aio_tokio"] }
 netwatch = "0.19"
 iroh-mdns-address-lookup = "0.6"
+# For tests: a relay on loopback, the one iroh itself uses.
+iroh-relay = { version = "1.3", features = ["server"] }
 serde = { version = "1", features = ["derive"] }
 serde_bytes = "0.11"
 thiserror = "2"
