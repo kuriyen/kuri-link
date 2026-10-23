@@ -221,8 +221,8 @@ with ALPN kuri-link/1/<app>    pairing and authorizer       and register their a
   on any machine at home, connects to the gateway and registers the apps it
   serves; the gateway then opens a stream on that connection for each
   request it forwards. A back end therefore accepts no connection at all,
-  needs no relay, mapping or mDNS, and its address does not matter. When it
-  stops, its connection ends, and so does its registration.
+  needs no relay, mapping or mDNS of its own, and its address does not
+  matter. When it stops, its connection ends, and so does its registration.
 - **Back ends pair with the gateway once,** as phones do, through a second
   pairing whose door is the reserved application `gateway`. Its tickets admit
   a key to the gateway's set of back ends, never to its set of phones, and
@@ -241,7 +241,10 @@ with ALPN kuri-link/1/<app>    pairing and authorizer       and register their a
 - **Authorization happens at the gateway.** Its authorizer sees the phone's
   key proven by the handshake, the app, the method and the credential, as a
   back end's does today; by default it admits the paired phones. Unpairing a
-  phone there refuses it everywhere from its next request.
+  phone there refuses it everywhere from its next request. The gateway is
+  the one place where access is decided: an authorizer added on top, such as
+  one that checks grants, goes on the gateway, and the back ends do not check
+  grants again.
 - **A back end trusts the gateway's word.** Its `Caller` is the phone, as the
   gateway vouches, with the gateway's claims, so a service sees which phone
   calls and needs no change. Its own authorizer may narrow further; by
@@ -293,14 +296,23 @@ Choices made, and why:
   decision, not something a program on the home network gets by finding the
   gateway. mDNS, when the owner turns it on, only finds a gateway whose
   address changed.
-- **No way around the gateway, at home or away.** If the gateway is down,
-  every app is. A second way in, phones dialling back ends directly at home,
-  would need each back end to listen and to know the paired phones, and an
-  unpairing would have to reach every back end: two doors, and two locks to
-  keep in step. The gateway runs on the machine that is always on anyway,
-  its supervisor restarts it, and a phone reports that the home gateway is
-  not answering rather than a generic failure. A bypass can be added later if
-  real outages call for it; once apps depend on one, it cannot be taken away.
+- **No way around the gateway, at home or away, in this version.** If the
+  gateway is down, every app is. A second way in, phones dialling back ends
+  directly at home, would need each back end to listen and to know the paired
+  phones, and an unpairing would have to reach every back end: two doors, and
+  two locks to keep in step. The gateway runs on the machine that is always
+  on anyway, its supervisor restarts it, and a phone reports that the home
+  gateway is not answering rather than a generic failure.
+
+  The direction after that: at home, heavy traffic such as a camera's video
+  or a media stream goes straight between the phone and the back end, and
+  the gateway only introduces them and authorizes. It decides who may talk; the
+  bytes do not pass through it, and connections it set up keep working while
+  it restarts. Nothing in version 1 closes that off. The credential in a
+  header is opaque, so a phone can carry one the gateway issued, which a back
+  end checks against the gateway's key without asking it; a method under the
+  reserved `kuri-link.` prefix can hand such a credential out; and a field a
+  peer does not know is ignored, so the header can grow.
 - **The gateway is a role of the library, run by a small program of its
   own.** `kuri-link` gets a gateway builder, and a standalone program hosts
   it by default. An always-on hub may embed the same code, but by default it
@@ -311,8 +323,13 @@ Choices made, and why:
   every back end would then face outside, and every one would have to hear of
   each pairing and unpairing. One door is the point.
 
-What remains: a back end that was off while the gateway's address on the home
-network changed does not find it again without mDNS, and has to pair again.
+A gateway whose address changed needs no new pairing. A back end knows the
+gateway by its key, and dials the address it last heard and the relays in it:
+a ticket the gateway issues names its relays, and a back end dials through
+them even when it uses no relay of its own. With a relay, a back end that was
+off while the gateway moved finds it wherever it went; mDNS only finds it
+sooner at home. What remains: with neither a relay nor mDNS, that back end
+does not find the gateway until its address is given again.
 
 ## Hooks
 
