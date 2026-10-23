@@ -58,7 +58,7 @@ depend on a tag.
   as a QR code on a terminal; `status` lists the apps, phones and back ends,
   and `unpair` removes one. The commands reach the running gateway through a
   socket only its user can open; it refuses a directory that other users can
-  open.
+  open. It listens on every interface unless `--bind` names one address.
 
 ### Dart package
 

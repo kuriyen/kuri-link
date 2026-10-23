@@ -41,10 +41,16 @@ impl Gateway {
 
 /// Starts the gateway on `dir` and reads the line it prints once it serves.
 fn start(dir: &Path) -> (Gateway, String) {
+    start_with(dir, &[])
+}
+
+/// Starts the gateway on `dir` with the options `args`.
+fn start_with(dir: &Path, args: &[&str]) -> (Gateway, String) {
     let mut gateway = Gateway(
         Command::new(PROGRAM)
             .arg("--dir")
             .arg(dir)
+            .args(args)
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
@@ -204,6 +210,32 @@ async fn the_gateway_pairs_both_sides_and_forwards_between_them() {
 
     phone.shutdown().await;
     back_end.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_gateway_listens_on_one_address_when_told() {
+    let dir = Scratch::new();
+    let (_gateway, ready) = start_with(&dir.0, &["--bind", "127.0.0.1"]);
+    let port = ready.rsplit(' ').next().unwrap();
+
+    let status = command(&dir.0, &["status"]).unwrap();
+    let addresses: Vec<&str> = status
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("address "))
+        .collect();
+    assert_eq!(addresses, [format!("127.0.0.1:{port}")], "{status}");
+
+    let phone = Node::builder()
+        .relays(Relays::None)
+        .bind_addr("127.0.0.1:0".parse().unwrap())
+        .bind()
+        .await
+        .unwrap();
+    phone
+        .pair(&ticket(&dir.0, "phone"))
+        .await
+        .expect("the phone pairs over loopback");
+    phone.shutdown().await;
 }
 
 #[test]

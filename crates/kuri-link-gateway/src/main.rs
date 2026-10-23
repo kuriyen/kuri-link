@@ -2,8 +2,8 @@
 //! end behind it, and the back ends dial out to it and listen for nothing.
 //!
 //! ```text
-//! kuri-link-gateway [--dir DIR] [--port PORT] [--relay URL]... [--port-mapping]
-//!                   [--local-discovery]
+//! kuri-link-gateway [--dir DIR] [--port PORT] [--bind ADDR] [--relay URL]...
+//!                   [--port-mapping] [--local-discovery]
 //! kuri-link-gateway [--dir DIR] pair phone|back-end
 //! kuri-link-gateway [--dir DIR] status
 //! kuri-link-gateway [--dir DIR] unpair KEY
@@ -19,11 +19,14 @@
 //!
 //! The gateway listens on every interface, on a port picked when it first
 //! starts and kept from then on, so that its address stays the same; `--port`
-//! picks one instead. `--relay`, `--port-mapping` and `--local-discovery` work
-//! as for `kuri-link-echo-server`: a relay you run keeps the gateway reachable
-//! from outside, the router can be asked to forward its port, and mDNS
-//! announces it on the home network, where back ends then find it whatever
-//! its address there has become.
+//! picks one instead. `--bind ADDR` listens on that one address, on the same
+//! port: `0.0.0.0` keeps the gateway to IPv4, and `127.0.0.1` leaves it
+//! reachable from other machines only through its relays. `--relay`,
+//! `--port-mapping` and `--local-discovery` work as for
+//! `kuri-link-echo-server`: a relay you run keeps the gateway reachable from
+//! outside, the router can be asked to forward its port, and mDNS announces
+//! it on the home network, where back ends then find it whatever its address
+//! there has become.
 //!
 //! `pair phone` asks the running gateway for a ticket a phone redeems, and
 //! `pair back-end` for one a back end redeems; each pairs one device within
@@ -37,7 +40,7 @@
 //! released.
 
 use std::io::IsTerminal;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -58,8 +61,8 @@ const MAPPING_WAIT: Duration = Duration::from_secs(5);
 /// How long a command has to say what it wants.
 const COMMAND_WAIT: Duration = Duration::from_secs(2);
 
-const USAGE: &str = "usage: kuri-link-gateway [--dir DIR] [--port PORT] [--relay URL]... \
-                     [--port-mapping] [--local-discovery]\n       \
+const USAGE: &str = "usage: kuri-link-gateway [--dir DIR] [--port PORT] [--bind ADDR] \
+                     [--relay URL]... [--port-mapping] [--local-discovery]\n       \
                      kuri-link-gateway [--dir DIR] pair phone|back-end | status | unpair KEY";
 
 #[tokio::main]
@@ -74,6 +77,7 @@ async fn main() {
 #[derive(Default)]
 struct Options {
     port: Option<u16>,
+    bind: Option<IpAddr>,
     relays: Vec<RelayUrl>,
     port_mapping: bool,
     local_discovery: bool,
@@ -89,6 +93,7 @@ async fn run() -> Result<(), String> {
         match arg.as_str() {
             "--dir" => dir = Some(PathBuf::from(value()?)),
             "--port" => options.port = Some(value()?.parse().map_err(|e| format!("--port: {e}"))?),
+            "--bind" => options.bind = Some(value()?.parse().map_err(|e| format!("--bind: {e}"))?),
             "--relay" => options
                 .relays
                 .push(value()?.parse().map_err(|e| format!("--relay: {e}"))?),
@@ -163,7 +168,7 @@ async fn serve(dir: &Path, options: Options) -> Result<(), String> {
     let gateway = Gateway::open(back_ends, dir.join("apps")).map_err(|e| at("apps", e))?;
     let control = listen(dir)?;
 
-    let node = Node::builder()
+    let mut builder = Node::builder()
         .secret_key(key)
         .port(port)
         .relays(if options.relays.is_empty() {
@@ -174,10 +179,11 @@ async fn serve(dir: &Path, options: Options) -> Result<(), String> {
         .port_mapping(options.port_mapping)
         .local_discovery(options.local_discovery)
         .pairing(phones.clone())
-        .gateway(gateway.clone())
-        .bind()
-        .await
-        .map_err(|e| e.to_string())?;
+        .gateway(gateway.clone());
+    if let Some(ip) = options.bind {
+        builder = builder.bind_addr(SocketAddr::new(ip, port));
+    }
+    let node = builder.bind().await.map_err(|e| e.to_string())?;
     let reach = node.reach(MAPPING_WAIT).await;
     let home = Home {
         node,
@@ -192,11 +198,18 @@ async fn serve(dir: &Path, options: Options) -> Result<(), String> {
 
     // One line, so a script or a test can read it.
     println!("gateway {} on port {port}", home.node.id());
+    let on_loopback = options.bind.is_some_and(|ip| ip.is_loopback());
     eprintln!(
         "{}",
-        describe(&reach, options.port_mapping, !home.relays.is_empty())
+        describe(
+            &reach,
+            options.port_mapping,
+            !home.relays.is_empty(),
+            on_loopback
+        )
     );
-    if options.local_discovery {
+    // A node bound to loopback does not use mDNS.
+    if options.local_discovery && !on_loopback {
         eprintln!(
             "announced on this network by mDNS: devices on it can see the gateway's \
              key and addresses, and only paired ones get in"
@@ -393,9 +406,14 @@ impl Home {
 
 /// Whether a phone away from home can reach the gateway, and if not, what
 /// stands in the way.
-fn describe(reach: &Reach, asked: bool, relayed: bool) -> String {
+fn describe(reach: &Reach, asked: bool, relayed: bool, loopback: bool) -> String {
     if relayed {
         return "reachable from outside through the relays given".into();
+    }
+    if loopback {
+        return "reachable from this machine alone: it listens on loopback, with no \
+                relay (--relay)"
+            .into();
     }
     const ONLY_HERE: &str = "devices on this network can still pair and connect";
     match reach {
