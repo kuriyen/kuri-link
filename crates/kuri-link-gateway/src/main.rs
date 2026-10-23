@@ -13,7 +13,8 @@
 //! the gateway keeps across restarts: its key, its port, the phones and back
 //! ends paired with it, and which back end serves each app. It also holds the
 //! socket through which the commands reach the running gateway, so only the
-//! user who runs the gateway can use them. DIR defaults to
+//! user who runs the gateway can use them: it refuses a DIR that other users
+//! can open. DIR defaults to
 //! `$XDG_STATE_HOME/kuri-link-gateway`, or `~/.local/state/kuri-link-gateway`.
 //!
 //! The gateway listens on every interface, on a port picked when it first
@@ -153,6 +154,7 @@ async fn serve(dir: &Path, options: Options) -> Result<(), String> {
         .mode(0o700)
         .create(dir)
         .map_err(|e| format!("{}: {e}", dir.display()))?;
+    private(dir)?;
     let key = kuri_link::load_or_create_key(&dir.join("key")).map_err(|e| at("key", e))?;
     let port = keep_port(&dir.join("port"), options.port).map_err(|e| at("port", e))?;
     let phones = Pairing::new(PeerSet::open(dir.join("phones")).map_err(|e| at("phones", e))?);
@@ -215,6 +217,25 @@ async fn serve(dir: &Path, options: Options) -> Result<(), String> {
     }
     let _ = std::fs::remove_file(dir.join("control"));
     home.node.shutdown().await;
+    Ok(())
+}
+
+/// Refuses `dir` if other users can open it: it holds the gateway's key, and
+/// the socket through which `pair phone` gets a ticket into every app.
+/// Creating it with mode 0700 protects only a directory created here.
+fn private(dir: &Path) -> Result<(), String> {
+    let mode = std::fs::metadata(dir)
+        .map_err(|e| format!("{}: {e}", dir.display()))?
+        .permissions()
+        .mode();
+    if mode & 0o077 != 0 {
+        return Err(format!(
+            "{} is open to other users (mode {:o}), and it holds the gateway's key \
+             and the socket that issues tickets; chmod 700 it, or pick another --dir",
+            dir.display(),
+            mode & 0o777
+        ));
+    }
     Ok(())
 }
 

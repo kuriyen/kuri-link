@@ -2,7 +2,8 @@
 //! registered, and unpair, while it forwards a phone's requests to a back end
 //! behind it.
 
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
@@ -203,4 +204,46 @@ async fn the_gateway_pairs_both_sides_and_forwards_between_them() {
 
     phone.shutdown().await;
     back_end.shutdown().await;
+}
+
+#[test]
+fn the_gateway_refuses_a_directory_other_users_can_open() {
+    let dir = Scratch::new();
+    std::fs::create_dir(&dir.0).unwrap();
+    let mode = |bits| std::fs::set_permissions(&dir.0, std::fs::Permissions::from_mode(bits));
+    mode(0o755).unwrap();
+    let mut refused = Gateway(
+        Command::new(PROGRAM)
+            .arg("--dir")
+            .arg(&dir.0)
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap(),
+    );
+    let status = (0..100)
+        .find_map(|_| {
+            let status = refused.0.try_wait().unwrap();
+            if status.is_none() {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            status
+        })
+        .expect("the gateway refuses to start");
+    assert!(!status.success());
+    let mut said = String::new();
+    refused
+        .0
+        .stderr
+        .take()
+        .unwrap()
+        .read_to_string(&mut said)
+        .unwrap();
+    assert!(said.contains("chmod 700"), "{said}");
+    assert!(!dir.0.join("key").exists(), "nothing is written there");
+
+    mode(0o700).unwrap();
+    let (gateway, ready) = start(&dir.0);
+    assert!(ready.starts_with("gateway "), "{ready}");
+    gateway.stop();
 }
