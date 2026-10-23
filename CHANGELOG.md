@@ -13,13 +13,35 @@ depend on a tag.
   made that way is a new wire version, with its own ALPN
   (`kuri-link/2/<app>`), which a version 1 peer refuses at the handshake
   instead of misreading.
-- **The Rust and Dart APIs** follow Cargo's rules for 0.x: a patch release
-  (0.1.x) does not break them, and a minor release (0.2) may.
+- **The Rust and Dart APIs** follow Cargo's rules for 0.x: a patch release,
+  which changes only the last number, does not break them, and a minor
+  release, which changes the middle one, may.
 - **Text forms** stay readable: a key is 64 hex digits, and a ticket is
   `KURI-LINK:` followed by base32. Peer files and tickets written by 0.1.0 still
   read in later releases.
 
-## Unreleased
+## 0.3.0 — 2026-10-23
+
+Upgrade if a home runs more than one back end: one gateway now pairs the
+phones once and forwards each request to the back end that serves its app, so
+a phone reaches every back end at home through one key. A back end behind the
+gateway dials out to it and needs no port, mapping or relay of its own. This
+was tested on a phone, at home and over mobile data, with the gateway reached
+through a relay.
+
+Two changes can break an app on 0.2.x, so check both before upgrading:
+
+- `FaultCode` has a new code, `Unavailable`, and in Rust it is
+  `#[non_exhaustive]`. A Rust `match` on it needs a wildcard arm, and a Dart
+  `switch` on it needs a case for `FaultCode.unavailable` or a default.
+- In Rust, the error enums `Error`, `CallError`, `PairError` and `WireError`
+  are `#[non_exhaustive]` too, so a `match` on one needs a wildcard arm; and
+  so is `AuthRequest`, which code outside Kuri Link can no longer build from
+  its fields, as a test of an authorizer might have. Dart is not affected.
+
+Peers still speak wire format 1, so peers from earlier releases keep working
+with 0.3.0; they read `Unavailable` as `unknown`. A phone app built before
+this release reached the back ends through the gateway unchanged.
 
 ### `kuri-link`
 

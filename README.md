@@ -9,8 +9,8 @@ Kuri Link is part of [Kuriyen](https://github.com/kuriyen). Its idea comes from
 the Mongol Empire's *örtöö* relay network: messages travel station to station
 until they arrive.
 
-> **Status: 0.1, experimental.** Wire format 1 is kept compatible from 0.1.0 on;
-> the APIs may still change in 0.2 (see [CHANGELOG.md](CHANGELOG.md)). Nothing
+> **Status: 0.3, experimental.** Wire format 1 is kept compatible from 0.1.0 on;
+> the APIs may still change in 0.4 (see [CHANGELOG.md](CHANGELOG.md)). Nothing
 > is published to crates.io or pub.dev; depend on a git tag.
 
 ## What it gives an app

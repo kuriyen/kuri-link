@@ -277,9 +277,9 @@ pub struct LinkClient {
     inner: kuri_link::Client,
 }
 
-/// Which way a connection's data goes. A kind of path added in a later 0.1.x
+/// Which way a connection's data goes. A kind of path added in a patch
 /// release shows up as no path (`LinkClient::path` returns `None`), not as a
-/// new variant; new variants wait for the next 0.x release.
+/// new variant; new variants wait for a minor release.
 #[derive(Debug, Clone)]
 pub enum LinkRoute {
     /// Straight to the peer at this socket address, e.g. `"192.0.2.40:41234"`.

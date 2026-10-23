@@ -38,8 +38,8 @@ same one in Cargo and in pub:
 
 ```toml
 [dependencies]
-kuri-link = { git = "https://github.com/kuriyen/kuri-link", tag = "v0.2.0" }
-kuri-link-ffi = { git = "https://github.com/kuriyen/kuri-link", tag = "v0.2.0" }
+kuri-link = { git = "https://github.com/kuriyen/kuri-link", tag = "v0.3.0" }
+kuri-link-ffi = { git = "https://github.com/kuriyen/kuri-link", tag = "v0.3.0" }
 ```
 
 ```yaml
@@ -48,7 +48,7 @@ dependencies:
     git:
       url: https://github.com/kuriyen/kuri-link
       path: dart
-      ref: v0.2.0
+      ref: v0.3.0
 ```
 
 The Dart package's generated code and the Rust side each carry a hash of the
@@ -60,8 +60,8 @@ alongside Kuri Link.
 The compatibility promise is in [`CHANGELOG.md`](../CHANGELOG.md): from 0.1.0
 on, peers that speak wire format 1 keep working together across releases, so
 a phone app and a back end can be updated on different days; the Rust and
-Dart APIs follow Cargo's 0.x rules, so 0.1.x releases do not break them and
-0.2 may.
+Dart APIs follow Cargo's 0.x rules, so 0.3.x releases do not break them and
+0.4 may.
 
 ## 1. Make one native library
 
