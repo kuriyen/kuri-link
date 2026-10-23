@@ -614,7 +614,153 @@ async fn connection(
 
 #[cfg(test)]
 mod tests {
+    use std::net::{Ipv4Addr, SocketAddr};
+    use std::time::Duration;
+
+    use iroh::endpoint::presets;
+    use iroh::RelayMode;
+
     use super::*;
+    use crate::hooks::{Authorizer, Denied, Origin};
+    use crate::wire::{read_frame, Op, Reply, DEFAULT_MAX_FRAME};
+    use crate::{BoxFuture, Methods, Node, NodeKey, PeerAddr, Registration, Relays};
+
+    const APP: &str = "camera";
+
+    fn loopback() -> SocketAddr {
+        SocketAddr::from((Ipv4Addr::LOCALHOST, 0))
+    }
+
+    /// `whoami`: the caller's key and claims, as the service sees them.
+    fn whoami() -> Methods {
+        Methods::new().unary("whoami", |caller, _args| async move {
+            let key = caller.peer().map(|peer| Value::Text(peer.to_string()));
+            Ok(Value::Array(vec![
+                key.unwrap_or(Value::Null),
+                caller.claims,
+            ]))
+        })
+    }
+
+    /// Admits anyone, and says so in its claims.
+    struct Vouching;
+
+    impl Authorizer for Vouching {
+        fn authorize<'a>(&'a self, req: AuthRequest<'a>) -> BoxFuture<'a, Result<Caller, Denied>> {
+            Box::pin(async move {
+                Ok(Caller {
+                    origin: Origin::Peer(req.peer),
+                    claims: Value::Text("the authorizer's".into()),
+                })
+            })
+        }
+    }
+
+    /// Calls `whoami` at `at` as `key`, with a header that names another
+    /// caller, another application and claims of the front end's own making,
+    /// as only a gateway's should.
+    async fn whoami_naming_another(key: NodeKey, at: PeerAddr) -> Value {
+        let endpoint = Endpoint::builder(presets::Minimal)
+            .secret_key(key.into_iroh())
+            .relay_mode(RelayMode::Disabled)
+            .clear_ip_transports()
+            .bind_addr(loopback())
+            .unwrap()
+            .bind()
+            .await
+            .unwrap();
+        let conn = endpoint
+            .connect(at.to_iroh(), &crate::alpn(APP))
+            .await
+            .unwrap();
+        let (mut send, mut recv) = conn.open_bi().await.unwrap();
+        let mut header = Header::new(Op::Call, "whoami", Value::Null, None);
+        header.app = Some("media".into());
+        let another = NodeKey::generate().public();
+        header.caller = Some(serde_bytes::ByteBuf::from(another.as_bytes().to_vec()));
+        header.claims = Some(Value::Text("the front end's own".into()));
+        write_frame(&mut send, &header, DEFAULT_MAX_FRAME)
+            .await
+            .unwrap();
+        send.finish().unwrap();
+        let reply = read_frame::<Reply>(&mut recv, DEFAULT_MAX_FRAME)
+            .await
+            .unwrap();
+        endpoint.close().await;
+        match reply {
+            Reply::Ok(seen) => seen,
+            Reply::Err(fault) => panic!("{fault}"),
+        }
+    }
+
+    fn seen(caller: PeerId, claims: Value) -> Value {
+        Value::Array(vec![Value::Text(caller.to_string()), claims])
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_front_end_cannot_speak_for_another_to_a_back_end_it_dials() {
+        let camera = Node::builder()
+            .relays(Relays::None)
+            .bind_addr(loopback())
+            .serve(APP, whoami())
+            .authorizer(Vouching)
+            .bind()
+            .await
+            .unwrap();
+        let phone = NodeKey::generate();
+        let id = phone.public();
+        assert_eq!(
+            whoami_naming_another(phone, camera.bound_addr()).await,
+            seen(id, Value::Text("the authorizer's".into()))
+        );
+        camera.shutdown().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_front_end_cannot_speak_for_another_through_a_gateway() {
+        let phones = PeerSet::new();
+        let gateway = Gateway::new(PeerSet::new());
+        let home = Node::builder()
+            .relays(Relays::None)
+            .bind_addr(loopback())
+            .pairing(Pairing::new(phones.clone()))
+            .gateway(gateway.clone())
+            .bind()
+            .await
+            .unwrap();
+        let camera = Node::builder()
+            .relays(Relays::None)
+            .bind_addr(loopback())
+            .serve(APP, whoami())
+            .behind_gateway(home.bound_addr())
+            .bind()
+            .await
+            .unwrap();
+        let ticket = gateway
+            .pairing()
+            .issue(home.bound_addr(), Duration::from_secs(60));
+        camera.pair_gateway(&ticket).await.unwrap();
+        let mut registration = camera.registration().unwrap();
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            registration.wait_for(|r| *r == Registration::Registered),
+        )
+        .await
+        .expect("registers in time")
+        .unwrap();
+
+        let phone = NodeKey::generate();
+        let id = phone.public();
+        phones.insert(id).unwrap();
+        // The gateway's authorizer said nothing of the phone, so the back
+        // end hears nothing either.
+        assert_eq!(
+            whoami_naming_another(phone, home.bound_addr()).await,
+            seen(id, Value::Null)
+        );
+        camera.shutdown().await;
+        home.shutdown().await;
+    }
 
     fn args(apps: &[&str]) -> Value {
         Value::Map(vec![(
