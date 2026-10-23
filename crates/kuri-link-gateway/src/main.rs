@@ -33,7 +33,8 @@
 //! `status` lists the apps that back ends registered and whether each is
 //! served now, then the paired phones and back ends. `unpair KEY` removes a
 //! phone or a back end by the key `status` shows: a phone is refused from its
-//! next request, and a back end's registration ends at once.
+//! next request, and a back end's registration ends at once and its apps are
+//! released.
 
 use std::io::IsTerminal;
 use std::net::SocketAddr;

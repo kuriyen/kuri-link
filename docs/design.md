@@ -231,7 +231,8 @@ with ALPN kuri-link/1/<app>    pairing and authorizer       and register their a
 - **An app name belongs to one back end.** The gateway records which back end
   key first registered each app. A restarted back end, same key, replaces its
   own registration; another key is refused that name until the owner unpairs
-  the first.
+  the first. Unpairing a back end releases its names: the gateway stops
+  accepting them, as it does a name no back end registered.
 - **Forwarding is per request, and a whole stream.** The gateway reads the
   phone's header, authorizes the request, and opens a stream to the back end
   with the same header plus the app, the phone's key and the authorizer's

@@ -368,6 +368,66 @@ async fn unpairing_a_back_end_ends_its_registration_at_once() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn unpairing_a_back_end_releases_its_names() {
+    let dir = Scratch::new();
+    let phones = Pairing::new(PeerSet::new());
+    let back_ends = PeerSet::open(dir.0.join("back-ends")).unwrap();
+    let gateway = Gateway::open(back_ends.clone(), dir.0.join("apps")).unwrap();
+    let home_key = NodeKey::generate();
+    let home = gateway_node(&gateway, &phones, home_key.clone()).await;
+    let camera = paired_back_end(&gateway, &home, NodeKey::generate(), "camera").await;
+    let phone = phone().await;
+    phone
+        .pair(&phones.issue(home.bound_addr(), MINUTE))
+        .await
+        .unwrap();
+    assert_eq!(who_echoes(&phone, &home).await.unwrap(), "camera");
+
+    // Unpaired while the gateway runs: the gateway stops accepting the name,
+    // as one no back end registered, instead of answering for good that it
+    // is unavailable.
+    back_ends.remove(&camera.id()).unwrap();
+    assert!(gateway.apps().is_empty());
+    tokio::time::timeout(PATIENCE, async {
+        while phone.connect(home.bound_addr(), APP).await.is_ok() {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("the gateway stops accepting the name");
+    assert_eq!(owners(&dir), "");
+    camera.shutdown().await;
+
+    // Unpaired while the gateway is down: released when it starts.
+    let lamp = paired_back_end(&gateway, &home, NodeKey::generate(), "lamp").await;
+    assert_eq!(who_echoes(&phone, &home).await.unwrap(), "lamp");
+    let lamp_id = lamp.id();
+    lamp.shutdown().await;
+    home.shutdown().await;
+    back_ends.remove(&lamp_id).unwrap();
+    assert!(!owners(&dir).is_empty());
+    let gateway = Gateway::open(back_ends.clone(), dir.0.join("apps")).unwrap();
+    assert!(gateway.apps().is_empty());
+    let home = gateway_node(&gateway, &phones, home_key).await;
+    tokio::time::timeout(PATIENCE, async {
+        while !owners(&dir).is_empty() {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("the gateway forgets the name when it starts");
+    assert!(phone.connect(home.bound_addr(), APP).await.is_err());
+
+    phone.shutdown().await;
+    home.shutdown().await;
+}
+
+/// The gateway's file of who serves each application, in `dir`.
+fn owners(dir: &Scratch) -> String {
+    std::fs::read_to_string(dir.0.join("apps")).unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_back_end_can_narrow_what_the_gateway_admits() {
     let phones = Pairing::new(PeerSet::new());
     let gateway = Gateway::new(PeerSet::new());

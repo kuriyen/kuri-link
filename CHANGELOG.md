@@ -36,7 +36,9 @@ depend on a tag.
   to it, and `Node::gateway_addr` follows the gateway's address.
 - At the gateway, an application's name belongs to the first back end that
   registered it, until that back end is unpaired; `Gateway::open` keeps the
-  owners in a file. A front end is authorized at the gateway, and the back end
+  owners in a file. Unpairing a back end releases its names, even while the
+  gateway is down: the gateway stops accepting them, as any name no back end
+  registered. A front end is authorized at the gateway, and the back end
   sees it as the caller. While no back end serves an application, the gateway
   answers its requests with `FaultCode::Unavailable`. A back end that stops
   without closing its connection is taken for gone after 10 seconds of

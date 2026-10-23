@@ -81,8 +81,8 @@ pub struct Gateway {
 struct Shared {
     back_ends: Pairing,
     state: Mutex<State>,
-    /// Counts the times a back end registered a name no back end had, so
-    /// that the gateway's node starts accepting its ALPN.
+    /// Counts the changes to the registered names, so that the gateway's
+    /// node accepts exactly their ALPNs.
     names: watch::Sender<u64>,
     next_registration: AtomicU64,
 }
@@ -164,18 +164,21 @@ impl Gateway {
     /// front end's ticket from this pairing admits it nowhere.
     ///
     /// To unpair a back end, remove it from [`Pairing::peers`]: its
-    /// registration ends at once, and its application names go to the next
-    /// back end that registers them.
+    /// registration ends at once, and its application names are released.
+    /// The gateway stops accepting them, as any name no back end registered,
+    /// until a back end registers them again.
     pub fn pairing(&self) -> &Pairing {
         &self.inner.back_ends
     }
 
-    /// The applications back ends registered, in order of name.
+    /// The applications paired back ends registered, in order of name.
     pub fn apps(&self) -> Vec<GatewayApp> {
+        let peers = self.inner.back_ends.peers();
         let state = self.state();
         state
             .owners
             .iter()
+            .filter(|(_, owner)| peers.contains(owner))
             .map(|(name, owner)| GatewayApp {
                 name: name.clone(),
                 owner: *owner,
@@ -328,6 +331,26 @@ impl Gateway {
     /// Ends registration `id`, unless a later one replaced it already.
     fn withdraw(&self, id: u64) {
         self.state().live.retain(|_, live| live.id != id);
+    }
+
+    /// Forgets the names of back ends that are no longer paired. Writes the
+    /// owners' file, so call it on a blocking thread.
+    fn release_unpaired(&self) {
+        let peers = self.inner.back_ends.peers();
+        let mut state = self.state();
+        let before = state.owners.len();
+        state.owners.retain(|_, owner| peers.contains(owner));
+        if state.owners.len() == before {
+            return;
+        }
+        // The names stay released even if the file keeps them: the next
+        // start releases them again.
+        if let Err(e) = state.persist() {
+            tracing::warn!(error = %e, "storing who serves the applications");
+        }
+        drop(state);
+        self.inner.names.send_modify(|count| *count += 1);
+        tracing::info!("released the names of unpaired back ends");
     }
 
     /// Finishes once `back_end` is no longer paired.
@@ -550,13 +573,23 @@ async fn accept(
         alpns.extend(gateway.names().iter().map(|app| crate::alpn(app)));
         alpns
     };
+    let release = || {
+        let gateway = gateway.clone();
+        tokio::task::spawn_blocking(move || gateway.release_unpaired())
+    };
     let mut names = gateway.inner.names.subscribe();
+    let mut back_ends = gateway.inner.back_ends.peers().changes();
+    // A back end unpaired while the gateway was down.
+    let _ = release().await;
     endpoint.set_alpns(alpns());
     let mut connections = JoinSet::new();
     loop {
         tokio::select! {
             _ = &mut stopped => break,
             Ok(()) = names.changed() => endpoint.set_alpns(alpns()),
+            Ok(()) = back_ends.changed() => {
+                let _ = release().await;
+            }
             incoming = endpoint.accept() => {
                 let Some(incoming) = incoming else {
                     break;
