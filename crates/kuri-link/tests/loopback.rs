@@ -14,6 +14,11 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 const APP: &str = "echo";
 
+/// How long `slow` takes to answer: longer than a request may go without
+/// hearing from its peer, so that only the keep-alives on the way show the
+/// client that the back end is still there.
+const SLOW: Duration = Duration::from_secs(12);
+
 fn loopback() -> SocketAddr {
     SocketAddr::from((Ipv4Addr::LOCALHOST, 0))
 }
@@ -21,6 +26,10 @@ fn loopback() -> SocketAddr {
 fn methods() -> Methods {
     Methods::new()
         .unary("echo", |_caller, args| async move { Ok(args) })
+        .unary("slow", |_caller, args| async move {
+            tokio::time::sleep(SLOW).await;
+            Ok(args)
+        })
         .typed(
             "add",
             |_caller, (a, b): (i64, i64)| async move { Ok(a + b) },
@@ -260,6 +269,22 @@ async fn a_client_dials_again_once_its_connection_is_lost() {
         assert_eq!(reply.unwrap(), hi);
     }
     assert_eq!(client.path().unwrap().route, Route::Direct(socket));
+
+    client_node.shutdown().await;
+    server.shutdown().await;
+}
+
+/// A back end that takes its time is there all along: the request waits for
+/// its reply instead of taking the connection for lost.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_slow_reply_is_waited_for() {
+    let key = NodeKey::generate();
+    let server = server_for(std::slice::from_ref(&key)).await;
+    let client_node = client_with(key).await;
+    let client = client_node.connect(server.bound_addr(), APP).await.unwrap();
+    let hi = Value::Text("hi".into());
+    assert_eq!(client.call("slow", hi.clone()).await.unwrap(), hi);
+    assert!(client.path().is_some(), "the connection is still up");
 
     client_node.shutdown().await;
     server.shutdown().await;

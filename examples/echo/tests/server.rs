@@ -98,6 +98,48 @@ async fn with_a_relay_the_ticket_reaches_the_server_through_it() {
     relay_server.shutdown().await.unwrap();
 }
 
+/// Killed, as by a crash or a power cut, the server says nothing to its
+/// clients; back on the same port with the same key, it does not know their
+/// connection, and the reset it sends them is made with a key of its own. A
+/// client's next request must not wait out QUIC's 30-second idle timeout: it
+/// fails within seconds, and the one after reaches the new process.
+#[tokio::test(flavor = "multi_thread")]
+async fn after_the_server_crashed_a_request_fails_within_seconds() {
+    let dir = std::env::temp_dir().join(format!("kuri-link-crash-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let key = dir.join("server.key");
+    let peers = dir.join("paired-devices");
+    let files = [
+        "--key",
+        key.to_str().unwrap(),
+        "--peers",
+        peers.to_str().unwrap(),
+    ];
+    let (server, ticket) = start(&[&["--bind", "127.0.0.1:0"][..], &files].concat());
+    let socket = ticket.addr.addrs.first().expect("one address").to_string();
+
+    let phone = Node::builder().relays(Relays::None).bind().await.unwrap();
+    let addr = phone.pair(&ticket).await.expect("pairs");
+    let echo = phone.connect(addr, kuri_link_echo::APP).await.unwrap();
+    let hi = Value::Text("hi".into());
+    assert_eq!(echo.call("echo", hi.clone()).await.unwrap(), hi);
+
+    drop(server);
+    let (server, _) = start(&[&["--bind", &socket][..], &files].concat());
+    let begun = std::time::Instant::now();
+    let first = echo.call("echo", hi.clone()).await;
+    let waited = begun.elapsed();
+    assert!(
+        waited < std::time::Duration::from_secs(15),
+        "the first request ended after {waited:?}: {first:?}"
+    );
+    assert_eq!(echo.call("echo", hi.clone()).await.unwrap(), hi);
+
+    phone.shutdown().await;
+    drop(server);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn behind_a_gateway_the_server_pairs_once_and_serves_through_it() {
     let phones = Pairing::new(PeerSet::new());

@@ -29,6 +29,17 @@ depend on a tag.
   where it gave TLS's `error 120: peer doesn't support any known protocol`.
   Nor does it add any more that only a device on the peer's network can reach
   it: the peer answered.
+- **Fixed: a request to a back end that crashed waited about 30 seconds.** A
+  back end that crashes or loses power closes nothing, and back on the same
+  address it does not know the old connection, so a client's next request
+  waited out QUIC's idle timeout before failing. Now a request that hears
+  nothing at all from its back end for 8 seconds, not even an acknowledgement,
+  fails, and the next request dials again. A slow reply still arrives: the
+  keep-alives on the way show the back end is there. So does the reply to a
+  request made while the device changes networks, which waits for a path on
+  the new network as before: the back end answers iroh's tries of the paths
+  there. Only if no path at all answers for 8 seconds does such a request
+  fail, and the next one dial again.
 
 ### Dart package
 

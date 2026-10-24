@@ -7,7 +7,7 @@ use std::time::Duration;
 use ciborium::Value;
 use iroh::endpoint::{
     presets, BindOpts, ConnectError, ConnectingError, Connection, ConnectionError,
-    PortmapperConfig, QuicTransportConfig, TransportErrorCode,
+    PortmapperConfig, QuicTransportConfig, TransportErrorCode, VarInt,
 };
 use iroh::protocol::{AcceptError, ProtocolHandler, Router};
 use iroh::{Endpoint, RelayMode, TransportAddr, Watcher};
@@ -61,6 +61,25 @@ const LOCAL_DIAL: Duration = Duration::from_secs(5);
 /// The TLS alert a peer ends the handshake with when it serves no application
 /// by the name asked for (`no_application_protocol`).
 const NO_APPLICATION_PROTOCOL: u8 = 120;
+
+/// How long a request waits to hear anything at all from its peer before it
+/// takes the connection for lost. A peer that is there acknowledges the
+/// request within a round trip, and while its reply takes longer, the two
+/// sides keep each other awake every five seconds (iroh's keep-alive). A peer
+/// that crashed and came back does neither: it has forgotten the connection,
+/// and the reset it sends is made with a key of its own, which the old
+/// connection does not know.
+/// Without this, the request would wait out the 30-second idle timeout.
+///
+/// A device changing networks keeps hearing from its peer, too: the peer
+/// answers iroh's tries of paths on the new network, even while the request
+/// still waits for one of them to carry it. So a change of networks ends a
+/// request this way only when no path at all answers for this long.
+const SILENCE: Duration = Duration::from_secs(8);
+
+/// The code a client closes a connection with once its peer went silent
+/// during a request.
+const SILENT: u32 = 4;
 
 /// Which relays a node may use when no direct path exists.
 ///
@@ -910,6 +929,39 @@ impl Remote {
     }
 }
 
+/// Runs `request` on `conn`, unless the connection hears nothing from its
+/// peer for [`SILENCE`] meanwhile. Then the connection is closed, so that the
+/// next request dials again, and this one fails rather than being sent again,
+/// since it may have reached the peer before the peer went quiet.
+async fn unless_silent<T>(
+    conn: &Connection,
+    request: impl std::future::Future<Output = Result<T, WireError>>,
+) -> Result<T, WireError> {
+    let silent = async {
+        let mut heard = conn.stats().udp_rx.datagrams;
+        let mut since = tokio::time::Instant::now();
+        loop {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            let now = conn.stats().udp_rx.datagrams;
+            if now != heard {
+                (heard, since) = (now, tokio::time::Instant::now());
+            } else if since.elapsed() >= SILENCE {
+                return;
+            }
+        }
+    };
+    tokio::select! {
+        done = request => done,
+        () = silent => {
+            conn.close(VarInt::from_u32(SILENT), b"the peer went silent");
+            Err(WireError::Stream(format!(
+                "nothing heard from the peer for {} seconds; the next request dials again",
+                SILENCE.as_secs()
+            )))
+        }
+    }
+}
+
 pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex
         .lock()
@@ -1126,16 +1178,20 @@ impl Client {
                 .map_err(|e| CallError::Fault(fault_of(e))),
             Inner::Remote(remote) => {
                 let max_frame = remote.max_frame;
-                let (mut send, mut recv) = self
-                    .connection(remote)
-                    .await?
-                    .open_bi()
-                    .await
-                    .map_err(|e| WireError::Stream(e.to_string()))?;
-                write_frame(&mut send, &self.header(Op::Call, method, args), max_frame).await?;
-                send.finish()
-                    .map_err(|e| WireError::Stream(e.to_string()))?;
-                match read_frame::<Reply>(&mut recv, max_frame).await? {
+                let header = self.header(Op::Call, method, args);
+                let conn = self.connection(remote).await?;
+                let reply = unless_silent(&conn, async {
+                    let (mut send, mut recv) = conn
+                        .open_bi()
+                        .await
+                        .map_err(|e| WireError::Stream(e.to_string()))?;
+                    write_frame(&mut send, &header, max_frame).await?;
+                    send.finish()
+                        .map_err(|e| WireError::Stream(e.to_string()))?;
+                    read_frame::<Reply>(&mut recv, max_frame).await
+                })
+                .await?;
+                match reply {
                     Reply::Ok(value) => Ok(value),
                     Reply::Err(fault) => Err(fault.into()),
                 }
@@ -1169,14 +1225,21 @@ impl Client {
             }
             Inner::Remote(remote) => {
                 let max_frame = remote.max_frame;
-                let (mut send, mut recv) = self
-                    .connection(remote)
-                    .await?
-                    .open_bi()
-                    .await
-                    .map_err(|e| WireError::Stream(e.to_string()))?;
-                write_frame(&mut send, &self.header(Op::Open, method, args), max_frame).await?;
-                match read_frame::<Reply>(&mut recv, max_frame).await? {
+                let header = self.header(Op::Open, method, args);
+                let conn = self.connection(remote).await?;
+                // Only until the back end accepts: the stream is then the
+                // app's, and may stay quiet for as long as the app likes.
+                let (send, recv, reply) = unless_silent(&conn, async {
+                    let (mut send, mut recv) = conn
+                        .open_bi()
+                        .await
+                        .map_err(|e| WireError::Stream(e.to_string()))?;
+                    write_frame(&mut send, &header, max_frame).await?;
+                    let reply = read_frame::<Reply>(&mut recv, max_frame).await?;
+                    Ok((send, recv, reply))
+                })
+                .await?;
+                match reply {
                     Reply::Ok(_) => Ok(Duplex {
                         send: Box::new(send),
                         recv: Box::new(recv),

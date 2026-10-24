@@ -564,6 +564,23 @@ timeout, the client dials again before its next request. A request already
 under way when the connection is lost fails and is not sent again, since it
 may already have taken effect; whether to retry it is the app's decision.
 
+**A back end that crashed is noticed within seconds.** A back end that stops
+cleanly closes its connections, and its clients dial again at once. One that
+crashes or loses power says nothing, and once it is back on the same address
+it does not know the old connections; QUIC's reset cannot tell the clients
+either, since the new process makes it with a key of its own. So a request
+that hears nothing at all from its back end for 8 seconds, not even an
+acknowledgement, takes the connection for lost: it fails, and the next request
+dials again. A back end that is only slow is not affected: while it works on
+a reply, the two sides' keep-alives pass every five seconds.
+
+Nor is a phone that changes networks, as from WiFi to mobile data: while iroh
+looks for a path on the new network, the back end answers its tries on the
+paths that work, and a request waits until one of them carries it, as before.
+Only if no path at all answers for 8 seconds, say because the back end can be
+reached neither directly nor through a relay from the new network, does the
+request fail, and the next one dial again.
+
 `client.path()` reports the path requests use now, `LinkRoute.direct` or
 `LinkRoute.relay`, with its round-trip time; it is `null` in process and while
 there is no connection. The **Measure** button in `examples/app` logs it once
