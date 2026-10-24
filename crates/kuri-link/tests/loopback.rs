@@ -198,10 +198,19 @@ async fn an_app_the_peer_does_not_serve_fails_at_the_handshake() {
     let server = server_for(std::slice::from_ref(&key)).await;
     let client_node = client_with(key).await;
 
-    assert!(client_node
+    let e = client_node
         .connect(server.bound_addr(), "not-served")
         .await
-        .is_err());
+        .unwrap_err();
+    assert_eq!(
+        e.to_string(),
+        format!(
+            "connecting to {} for not-served: it answered, but does not serve that app \
+             in wire format 1",
+            server.id().fmt_short()
+        ),
+        "the peer was reached, so nothing about where it can be reached from"
+    );
 
     client_node.shutdown().await;
     server.shutdown().await;

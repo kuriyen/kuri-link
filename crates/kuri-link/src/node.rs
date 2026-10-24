@@ -5,7 +5,10 @@ use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::Duration;
 
 use ciborium::Value;
-use iroh::endpoint::{presets, BindOpts, Connection, PortmapperConfig, QuicTransportConfig};
+use iroh::endpoint::{
+    presets, BindOpts, ConnectError, ConnectingError, Connection, ConnectionError,
+    PortmapperConfig, QuicTransportConfig, TransportErrorCode,
+};
 use iroh::protocol::{AcceptError, ProtocolHandler, Router};
 use iroh::{Endpoint, RelayMode, TransportAddr, Watcher};
 use iroh_mdns_address_lookup::MdnsAddressLookup;
@@ -54,6 +57,10 @@ const ADDR_UPDATE_GAP: Duration = Duration::from_secs(1);
 /// network. On that network it answers within milliseconds; from anywhere
 /// else it never does, and iroh would wait 30 seconds to say so.
 const LOCAL_DIAL: Duration = Duration::from_secs(5);
+
+/// The TLS alert a peer ends the handshake with when it serves no application
+/// by the name asked for (`no_application_protocol`).
+const NO_APPLICATION_PROTOCOL: u8 = 120;
 
 /// Which relays a node may use when no direct path exists.
 ///
@@ -713,14 +720,21 @@ pub(crate) async fn dial(
     let local = only_local(addr);
     let connect = || async {
         let attempt = endpoint.connect(target.clone(), &alpn);
-        if local {
+        let done = if local {
             match tokio::time::timeout(LOCAL_DIAL, attempt).await {
-                Ok(done) => done.map_err(|e| e.to_string()),
-                Err(_) => Err("timed out".to_owned()),
+                Ok(done) => done,
+                Err(_) => return Err(Failure::Unreached("timed out".to_owned())),
             }
         } else {
-            attempt.await.map_err(|e| e.to_string())
-        }
+            attempt.await
+        };
+        done.map_err(|e| {
+            if not_served(&e) {
+                Failure::NotServed
+            } else {
+                Failure::Unreached(e.to_string())
+            }
+        })
     };
     let first = connect().await;
     match (first, waker) {
@@ -742,14 +756,41 @@ fn only_local(addr: &PeerAddr) -> bool {
     addr.relays.is_empty() && !addr.addrs.iter().any(is_global)
 }
 
-fn connect_error(addr: &PeerAddr, app: &str, reason: String) -> Error {
-    let reason = if only_local(addr) {
-        format!(
+/// Why dialing a peer failed.
+enum Failure {
+    /// The peer answered, but serves no application by the name asked for,
+    /// or none in this wire format: both are part of the ALPN.
+    NotServed,
+    /// The peer could not be reached, or the handshake failed otherwise.
+    Unreached(String),
+}
+
+/// Whether the peer ended the handshake because it does not serve the
+/// application, rather than because it could not be reached.
+fn not_served(e: &ConnectError) -> bool {
+    matches!(
+        e,
+        ConnectError::Connecting {
+            source: ConnectingError::ConnectionError {
+                source: ConnectionError::ConnectionClosed(close),
+                ..
+            },
+            ..
+        } if close.error_code == TransportErrorCode::crypto(NO_APPLICATION_PROTOCOL)
+    )
+}
+
+fn connect_error(addr: &PeerAddr, app: &str, failure: Failure) -> Error {
+    let reason = match failure {
+        // It answered, so where it can be reached from is beside the point.
+        Failure::NotServed => {
+            format!("it answered, but does not serve that app in wire format {WIRE_VERSION}")
+        }
+        Failure::Unreached(reason) if only_local(addr) => format!(
             "{reason}; it has no address outside its own network and no relay, \
              so only a device on that network can reach it"
-        )
-    } else {
-        reason
+        ),
+        Failure::Unreached(reason) => reason,
     };
     Error::Connect {
         peer: addr.id.fmt_short(),

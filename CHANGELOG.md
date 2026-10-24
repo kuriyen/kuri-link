@@ -20,6 +20,16 @@ depend on a tag.
   `KURI-LINK:` followed by base32. Peer files and tickets written by 0.1.0 still
   read in later releases.
 
+## Unreleased
+
+### `kuri-link`
+
+- **Changed: connecting to a peer that does not serve the app says so.** The
+  error reads `it answered, but does not serve that app in wire format 1`,
+  where it gave TLS's `error 120: peer doesn't support any known protocol`.
+  Nor does it add any more that only a device on the peer's network can reach
+  it: the peer answered.
+
 ## 0.3.1 — 2026-10-24
 
 Upgrade if a home runs its own relay next to the gateway: the gateway can now
