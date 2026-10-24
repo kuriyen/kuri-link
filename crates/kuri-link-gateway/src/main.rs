@@ -201,20 +201,20 @@ async fn serve(dir: &Path, options: Options) -> Result<(), String> {
     let back_ends = PeerSet::open(dir.join("back-ends")).map_err(|e| at("back-ends", e))?;
     let gateway = Gateway::open(back_ends, dir.join("apps")).map_err(|e| at("apps", e))?;
     let control = listen(dir)?;
-    let relay_access = match options.relay_access {
-        Some(addr) => Some((
-            addr,
-            TcpListener::bind(addr)
-                .await
-                .map_err(|e| format!("--relay-access {addr}: {e}"))?,
-        )),
-        None => None,
-    };
-    let carried = Carried {
-        gateway: key.public(),
-        phones: phones.peers().clone(),
-        back_ends: gateway.pairing().peers().clone(),
-    };
+    if let Some(addr) = options.relay_access {
+        let listener = TcpListener::bind(addr)
+            .await
+            .map_err(|e| format!("--relay-access {addr}: {e}"))?;
+        let carried = Carried {
+            gateway: key.public(),
+            phones: phones.peers().clone(),
+            back_ends: gateway.pairing().peers().clone(),
+        };
+        // Answer from now on: the relay checks the gateway's own key as soon
+        // as the node connects to it, which can be before the router has
+        // said whether it forwards a port.
+        tokio::spawn(carried.answer(listener));
+    }
 
     let mut builder = Node::builder()
         .secret_key(key)
@@ -263,12 +263,11 @@ async fn serve(dir: &Path, options: Options) -> Result<(), String> {
              key and addresses, and only paired ones get in"
         );
     }
-    if let Some((addr, listener)) = relay_access {
+    if let Some(addr) = options.relay_access {
         eprintln!(
             "the relay's access checks are answered at {addr}: it may carry the gateway \
              and the devices paired with it"
         );
-        tokio::spawn(carried.answer(listener));
     }
     eprintln!("kuri-link-gateway pair phone|back-end issues a ticket");
     logging();
