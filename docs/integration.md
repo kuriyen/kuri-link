@@ -423,6 +423,10 @@ The relay then carries the gateway, and the phones and back ends paired with
 it, and no one else. Pairing or unpairing a device needs no change to the
 relay's config.
 
+The relay sees only a key, never a ticket, so it does not carry a phone that
+is not paired yet. A phone therefore pairs over the home network, where it
+reaches the gateway without the relay; a pairing screen should say so.
+
 ## Network changes and lost connections
 
 **Android needs a hint when the network changes.** Native code there cannot
