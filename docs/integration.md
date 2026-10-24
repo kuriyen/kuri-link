@@ -29,7 +29,7 @@ in [`design.md`](design.md).
 | Linux desktop, x86_64 | Works. `examples/app` builds and runs, and its integration test passes with the back end in process and in another process over loopback. |
 | Android, arm64-v8a and x86_64 | Works. `examples/app` builds for both ABIs, and has been tested on a phone (WiFi, mobile data, through a relay, switching between networks; from outside the home with no relay, after the back end restarted and after it moved to another port) and on the emulator. |
 | macOS, Apple silicon | Works. The Rust tests and the Dart package's tests pass, and `examples/app` builds, for both architectures in release, and runs; its integration test passes with the back end in process and in another process over loopback. |
-| iOS | Builds. `examples/app` builds for devices and the simulator, but has not run on either yet. Needs libc pinned for now (step 2). |
+| iOS | Runs on the simulator. `examples/app` builds for devices and the simulator, and its integration test passes on the simulator with the back end in process and in another process over loopback; no device has run it yet. Needs libc pinned for now (step 2). |
 | Windows | Not yet. Nothing here builds or bundles the native library for it, and nothing has been tested on it. |
 | Web | Not yet. A browser cannot open raw UDP, so a web front end could only ever reach its back end through a relay. |
 
@@ -577,5 +577,4 @@ a second, which is a quick way to see how an app behaves on a real network.
   inside the home can reach it elsewhere to tell it, and nothing outside the
   home knows.
 - **No typed Dart clients.** Dart calls methods by name with CBOR bytes.
-- **No Windows builds, and no iOS device or simulator has run the app**, as
-  above.
+- **No Windows builds, and no iOS device has run the app**, as above.

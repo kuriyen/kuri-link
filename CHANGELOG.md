@@ -36,8 +36,8 @@ depend on a tag.
 
 ### Examples
 
-- The example app runs on macOS and builds for iOS, devices and the
-  simulator. A build phase in each Xcode project runs
+- The example app runs on macOS and on the iOS simulator, and builds for iOS
+  devices. A build phase in each Xcode project runs
   `darwin/build_library.sh`, which builds the library with Cargo for the
   architectures Xcode builds, puts it in the app's Frameworks, as a framework
   on iOS, and signs it. The macOS app is sandboxed, with the entitlements to

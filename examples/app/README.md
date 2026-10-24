@@ -158,8 +158,8 @@ It drives the app: presses every button with the back end in-process, pairs
 with the server, presses them again, and expects the same answers apart from
 `whoami`.
 
-A phone or the emulator cannot start a process on the host, so start the
-server first and hand the test its ticket:
+A phone, the Android emulator or the iOS simulator cannot start a process on
+the host, so start the server first and hand the test its ticket:
 
 ```sh
 cargo run -p kuri-link-echo --bin kuri-link-echo-server > ticket &
@@ -168,7 +168,8 @@ flutter test integration_test -d <device> --dart-define=KURI_LINK_TICKET=$(head 
 ```
 
 On the emulator this pairs over the emulator's network with the server on its
-host; a stopped server makes the test fail.
+host; a stopped server makes the test fail. The iOS simulator shares the Mac's
+network, so there the server can stay on loopback, as for macOS above.
 
 To test the path through a relay, bind the server to the host's loopback,
 which the emulator cannot reach, and run a relay on an address it can, here
