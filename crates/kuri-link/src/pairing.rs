@@ -295,8 +295,10 @@ impl Service for PairService {
     }
 }
 
-/// Why pairing with a back end failed.
+/// Why pairing with a back end failed. More cases may come, so a `match` on
+/// it needs a wildcard arm.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum PairError {
     /// The back end could not be reached.
     #[error(transparent)]

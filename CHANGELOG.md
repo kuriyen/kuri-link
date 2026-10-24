@@ -26,6 +26,12 @@ depend on a tag.
 - **Changed: `FaultCode` is `#[non_exhaustive]`, and has a new code,
   `Unavailable`.** A `match` on it needs a wildcard arm. A peer from before
   this release reads the new code as `unknown`.
+- **Changed: the error enums `Error`, `CallError`, `PairError` and
+  `WireError` are `#[non_exhaustive]`, and so is `AuthRequest`.** A `match` on
+  one of the enums needs a wildcard arm. Outside Kuri Link, an `AuthRequest`
+  can no longer be built from its fields, or taken apart without `..`; an
+  authorizer reads its fields as before. Later releases can then add errors
+  and fields without breaking anyone.
 - One gateway for a home: a node built with `NodeBuilder::gateway` pairs the
   phones once, and forwards each request to the back end that registered its
   application there, so a phone reaches every back end at home through one

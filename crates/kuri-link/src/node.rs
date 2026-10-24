@@ -71,8 +71,10 @@ pub enum Relays {
     PublicDefault,
 }
 
-/// Errors from binding a node or connecting to a peer.
+/// Errors from binding a node or connecting to a peer. More cases may come,
+/// so a `match` on it needs a wildcard arm.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum Error {
     #[error("binding the endpoint: {0}")]
     Bind(String),
@@ -84,8 +86,10 @@ pub enum Error {
     },
 }
 
-/// A request that did not produce a result.
+/// A request that did not produce a result. More cases may come, so a
+/// `match` on it needs a wildcard arm.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum CallError {
     /// The server answered with a refusal or a failure.
     #[error(transparent)]

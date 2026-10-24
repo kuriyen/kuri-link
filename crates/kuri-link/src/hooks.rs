@@ -39,8 +39,10 @@ pub fn load_or_create_key(path: &Path) -> io::Result<NodeKey> {
     }
 }
 
-/// What the authorizer is asked about one request.
+/// What the authorizer is asked about one request. More fields may come, so
+/// only Kuri Link makes one.
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct AuthRequest<'a> {
     /// The caller's key, proven during the QUIC/TLS handshake. Not a claim:
     /// the connection could not exist unless the peer holds the private half.

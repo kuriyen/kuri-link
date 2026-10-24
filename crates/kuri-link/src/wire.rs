@@ -124,7 +124,9 @@ pub enum FaultCode {
 }
 
 /// A failure below the request layer: the stream, the encoding, or a limit.
+/// More cases may come, so a `match` on it needs a wildcard arm.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum WireError {
     #[error("stream: {0}")]
     Stream(String),
