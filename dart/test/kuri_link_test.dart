@@ -18,7 +18,9 @@ import 'package:kuri_link/kuri_link.dart';
 import 'package:test/test.dart';
 
 final target = Platform.environment['KURI_LINK_TARGET'] ?? '../target/debug';
-final library = '$target/libkuri_link_echo.so';
+final library = Platform.isMacOS
+    ? '$target/libkuri_link_echo.dylib'
+    : '$target/libkuri_link_echo.so';
 final serverBinary = '$target/kuri-link-echo-server';
 
 const app = 'echo';
