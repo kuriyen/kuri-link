@@ -77,6 +77,11 @@ const MAPPING_WAIT: Duration = Duration::from_secs(5);
 /// How long a command, or the relay's access check, has to say what it wants.
 const COMMAND_WAIT: Duration = Duration::from_secs(2);
 
+/// How long a listener waits after a failed accept before it tries again, so
+/// an error that lasts, such as running out of file descriptors, does not
+/// spin the loop or flood the log.
+const ACCEPT_RETRY: Duration = Duration::from_secs(1);
+
 /// The headers in which `iroh-relay` names the key it is asked to carry: the
 /// one it sends, and the one its documentation names.
 const KEY_HEADERS: [&str; 2] = ["x-iroh-nodeid", "x-iroh-endpoint-id"];
@@ -277,7 +282,10 @@ async fn serve(dir: &Path, options: Options) -> Result<(), String> {
         tokio::select! {
             accepted = control.accept() => match accepted {
                 Ok((stream, _)) => home.answer(stream).await,
-                Err(e) => tracing::warn!(error = %e, "a command could not connect"),
+                Err(e) => {
+                    tracing::warn!(error = %e, "a command could not connect");
+                    tokio::time::sleep(ACCEPT_RETRY).await;
+                }
             },
             _ = tokio::signal::ctrl_c() => break,
             _ = terminate.recv() => break,
@@ -480,6 +488,7 @@ impl Carried {
                 Ok((stream, _)) => stream,
                 Err(e) => {
                     tracing::warn!(error = %e, "the relay's access check could not connect");
+                    tokio::time::sleep(ACCEPT_RETRY).await;
                     continue;
                 }
             };
