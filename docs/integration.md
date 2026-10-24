@@ -38,8 +38,8 @@ same one in Cargo and in pub:
 
 ```toml
 [dependencies]
-kuri-link = { git = "https://github.com/kuriyen/kuri-link", tag = "v0.3.0" }
-kuri-link-ffi = { git = "https://github.com/kuriyen/kuri-link", tag = "v0.3.0" }
+kuri-link = { git = "https://github.com/kuriyen/kuri-link", tag = "v0.3.1" }
+kuri-link-ffi = { git = "https://github.com/kuriyen/kuri-link", tag = "v0.3.1" }
 ```
 
 ```yaml
@@ -48,7 +48,7 @@ dependencies:
     git:
       url: https://github.com/kuriyen/kuri-link
       path: dart
-      ref: v0.3.0
+      ref: v0.3.1
 ```
 
 The Dart package's generated code and the Rust side each carry a hash of the

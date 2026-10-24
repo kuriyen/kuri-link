@@ -20,7 +20,15 @@ depend on a tag.
   `KURI-LINK:` followed by base32. Peer files and tickets written by 0.1.0 still
   read in later releases.
 
-## Unreleased
+## 0.3.1 — 2026-10-24
+
+Upgrade if a home runs its own relay next to the gateway: the gateway can now
+tell the relay whom to carry, so pairing a phone at home is all it takes for
+the relay to carry it outside. This was tested on a phone, at home and over
+mobile data, through a relay that asked the gateway.
+
+Nothing to check before upgrading. Only the gateway program changes; the Rust
+and Dart APIs, wire format 1 and the text forms are as in 0.3.0.
 
 ### `kuri-link-gateway`
 
@@ -29,7 +37,11 @@ depend on a tag.
   and back ends paired with it, and no one else. Pairing a phone is then all
   it takes for the relay to carry it away from home, and unpairing it stops
   the relay carrying it from its next connection, with no list of keys to
-  keep in the relay's config. ADDR must be a loopback address.
+  keep in the relay's config. ADDR must be a loopback address. The relay
+  sees a key, never a ticket, so a phone pairs over the home network.
+- Fixed: when accepting a connection fails, on the control socket or for the
+  relay's check, the gateway waits a second before it tries again, instead
+  of trying at once and logging a warning each time round.
 
 ## 0.3.0 — 2026-10-23
 
