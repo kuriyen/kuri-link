@@ -410,6 +410,18 @@ Future<LinkNode> restartWithRelays(
 ```
 
 A relay that ships with Kuri Link is planned. Until then, run `iroh-relay`.
+Next to a gateway, let the gateway decide whom it carries, so that a relay
+meant for one home carries that home alone. Start the gateway with
+`--relay-access 127.0.0.1:3341`, and give the relay:
+
+```toml
+[access.http]
+url = "http://127.0.0.1:3341/"
+```
+
+The relay then carries the gateway, and the phones and back ends paired with
+it, and no one else. Pairing or unpairing a device needs no change to the
+relay's config.
 
 ## Network changes and lost connections
 

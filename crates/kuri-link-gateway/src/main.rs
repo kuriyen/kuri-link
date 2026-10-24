@@ -3,7 +3,7 @@
 //!
 //! ```text
 //! kuri-link-gateway [--dir DIR] [--port PORT] [--bind ADDR] [--relay URL]...
-//!                   [--port-mapping] [--local-discovery]
+//!                   [--port-mapping] [--local-discovery] [--relay-access ADDR]
 //! kuri-link-gateway [--dir DIR] pair phone|back-end
 //! kuri-link-gateway [--dir DIR] status
 //! kuri-link-gateway [--dir DIR] unpair KEY
@@ -28,6 +28,15 @@
 //! it on the home network, where back ends then find it whatever its address
 //! there has become.
 //!
+//! `--relay-access ADDR` lets an `iroh-relay` on this machine ask the gateway
+//! whom to carry: give the relay `access.http.url = "http://ADDR/"`. It then
+//! carries the gateway, and the phones and back ends paired with it as they
+//! are paired when it asks, and no one else, so pairing a phone is all it
+//! takes for the relay to carry it away from home. The relay asks when a
+//! device connects to it: an unpaired one keeps a connection it already has
+//! until it next connects, and the gateway refuses its requests meanwhile.
+//! ADDR is a loopback address, because the check carries no secret.
+//!
 //! `pair phone` asks the running gateway for a ticket a phone redeems, and
 //! `pair back-end` for one a back end redeems; each pairs one device within
 //! ten minutes. The ticket is printed on one line, and on a terminal it is
@@ -39,17 +48,24 @@
 //! next request, and a back end's registration ends at once and its apps are
 //! released.
 
+use std::convert::Infallible;
 use std::io::IsTerminal;
 use std::net::{IpAddr, SocketAddr};
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use http_body_util::Full;
+use hyper::body::{Bytes, Incoming};
+use hyper::server::conn::http1;
+use hyper::service::service_fn;
+use hyper::{Method, Request, Response, StatusCode};
+use hyper_util::rt::{TokioIo, TokioTimer};
 use kuri_link::{Gateway, Node, Pairing, PeerAddr, PeerId, PeerSet, Reach, RelayUrl, Relays};
 use qrcode::render::unicode::Dense1x2;
 use qrcode::QrCode;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
-use tokio::net::{UnixListener, UnixStream};
+use tokio::net::{TcpListener, UnixListener, UnixStream};
 use tokio::signal::unix::{signal, SignalKind};
 
 const TICKET_TTL: Duration = Duration::from_secs(10 * 60);
@@ -58,11 +74,16 @@ const TICKET_TTL: Duration = Duration::from_secs(10 * 60);
 /// router answers within a second; one that has not answered by now will not.
 const MAPPING_WAIT: Duration = Duration::from_secs(5);
 
-/// How long a command has to say what it wants.
+/// How long a command, or the relay's access check, has to say what it wants.
 const COMMAND_WAIT: Duration = Duration::from_secs(2);
 
+/// The headers in which `iroh-relay` names the key it is asked to carry: the
+/// one it sends, and the one its documentation names.
+const KEY_HEADERS: [&str; 2] = ["x-iroh-nodeid", "x-iroh-endpoint-id"];
+
 const USAGE: &str = "usage: kuri-link-gateway [--dir DIR] [--port PORT] [--bind ADDR] \
-                     [--relay URL]... [--port-mapping] [--local-discovery]\n       \
+                     [--relay URL]... [--port-mapping] [--local-discovery] \
+                     [--relay-access ADDR]\n       \
                      kuri-link-gateway [--dir DIR] pair phone|back-end | status | unpair KEY";
 
 #[tokio::main]
@@ -81,6 +102,7 @@ struct Options {
     relays: Vec<RelayUrl>,
     port_mapping: bool,
     local_discovery: bool,
+    relay_access: Option<SocketAddr>,
 }
 
 async fn run() -> Result<(), String> {
@@ -99,6 +121,18 @@ async fn run() -> Result<(), String> {
                 .push(value()?.parse().map_err(|e| format!("--relay: {e}"))?),
             "--port-mapping" => options.port_mapping = true,
             "--local-discovery" => options.local_discovery = true,
+            "--relay-access" => {
+                let addr: SocketAddr = value()?
+                    .parse()
+                    .map_err(|e| format!("--relay-access: {e}"))?;
+                if !addr.ip().is_loopback() {
+                    return Err(format!(
+                        "--relay-access: {addr} is not a loopback address; the relay's \
+                         check carries no secret, so it stays on this machine"
+                    ));
+                }
+                options.relay_access = Some(addr);
+            }
             "--help" | "-h" => {
                 println!("{USAGE}");
                 return Ok(());
@@ -167,6 +201,20 @@ async fn serve(dir: &Path, options: Options) -> Result<(), String> {
     let back_ends = PeerSet::open(dir.join("back-ends")).map_err(|e| at("back-ends", e))?;
     let gateway = Gateway::open(back_ends, dir.join("apps")).map_err(|e| at("apps", e))?;
     let control = listen(dir)?;
+    let relay_access = match options.relay_access {
+        Some(addr) => Some((
+            addr,
+            TcpListener::bind(addr)
+                .await
+                .map_err(|e| format!("--relay-access {addr}: {e}"))?,
+        )),
+        None => None,
+    };
+    let carried = Carried {
+        gateway: key.public(),
+        phones: phones.peers().clone(),
+        back_ends: gateway.pairing().peers().clone(),
+    };
 
     let mut builder = Node::builder()
         .secret_key(key)
@@ -214,6 +262,13 @@ async fn serve(dir: &Path, options: Options) -> Result<(), String> {
             "announced on this network by mDNS: devices on it can see the gateway's \
              key and addresses, and only paired ones get in"
         );
+    }
+    if let Some((addr, listener)) = relay_access {
+        eprintln!(
+            "the relay's access checks are answered at {addr}: it may carry the gateway \
+             and the devices paired with it"
+        );
+        tokio::spawn(carried.answer(listener));
     }
     eprintln!("kuri-link-gateway pair phone|back-end issues a ticket");
     logging();
@@ -401,6 +456,75 @@ impl Home {
             }
         }
         out
+    }
+}
+
+/// Whom the home's relay may carry: the gateway, and the phones and back ends
+/// paired with it at the moment it asks.
+#[derive(Clone)]
+struct Carried {
+    gateway: PeerId,
+    phones: PeerSet,
+    back_ends: PeerSet,
+}
+
+impl Carried {
+    fn admits(&self, key: &PeerId) -> bool {
+        *key == self.gateway || self.phones.contains(key) || self.back_ends.contains(key)
+    }
+
+    /// Answers the access checks of an `iroh-relay` whose `access.http.url`
+    /// names `listener`.
+    async fn answer(self, listener: TcpListener) {
+        loop {
+            let stream = match listener.accept().await {
+                Ok((stream, _)) => stream,
+                Err(e) => {
+                    tracing::warn!(error = %e, "the relay's access check could not connect");
+                    continue;
+                }
+            };
+            let carried = self.clone();
+            tokio::spawn(async move {
+                let service = service_fn(move |request| {
+                    let answer = carried.check(&request);
+                    async move { Ok::<_, Infallible>(answer) }
+                });
+                if let Err(e) = http1::Builder::new()
+                    .timer(TokioTimer::new())
+                    .header_read_timeout(COMMAND_WAIT)
+                    .serve_connection(TokioIo::new(stream), service)
+                    .await
+                {
+                    tracing::debug!(error = %e, "the relay's access check failed");
+                }
+            });
+        }
+    }
+
+    /// The relay admits a key only on `200` with the text `true`.
+    fn check(&self, request: &Request<Incoming>) -> Response<Full<Bytes>> {
+        let reply = |status, admitted: bool| {
+            let mut response = Response::new(Full::new(Bytes::from(admitted.to_string())));
+            *response.status_mut() = status;
+            response
+        };
+        if request.method() != Method::POST {
+            return reply(StatusCode::METHOD_NOT_ALLOWED, false);
+        }
+        let key = KEY_HEADERS
+            .iter()
+            .find_map(|name| request.headers().get(*name))
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<PeerId>().ok());
+        match key {
+            Some(key) if self.admits(&key) => reply(StatusCode::OK, true),
+            Some(key) => {
+                tracing::debug!(key = %key.fmt_short(), "the relay may not carry this key");
+                reply(StatusCode::OK, false)
+            }
+            None => reply(StatusCode::BAD_REQUEST, false),
+        }
     }
 }
 

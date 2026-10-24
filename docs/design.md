@@ -228,6 +228,13 @@ with ALPN kuri-link/1/<app>    pairing and authorizer       and register their a
   a key to the gateway's set of back ends, never to its set of phones, and
   the reverse: a phone cannot register an app, and a back end cannot call
   one. Unpairing a back end ends its registration.
+- **The home's relay carries the home alone.** A relay the home runs next to
+  the gateway asks the gateway whom to carry, each time a device connects to
+  it: the gateway, and the phones and back ends paired with it then. So
+  pairing a phone at home is all it takes for the relay to carry it outside,
+  and nobody keeps a list of keys. The relay sees only a key, not a ticket,
+  so a phone not yet paired is not carried: it pairs over the home network,
+  next to the code it scans.
 - **An app name belongs to one back end.** The gateway records which back end
   key first registered each app. A restarted back end, same key, replaces its
   own registration; another key is refused that name until the owner unpairs

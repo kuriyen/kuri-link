@@ -10,6 +10,11 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+# Answer the access checks of a relay that runs next to the gateway. iroh
+# already brings them in, so they add no crate.
+http-body-util = "0.1"
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
 kuri-link = { path = "../kuri-link" }
 # Tickets drawn as QR codes on the terminal, as the echo server draws its own.
 qrcode = { version = "0.14", default-features = false }

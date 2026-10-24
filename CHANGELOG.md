@@ -20,6 +20,17 @@ depend on a tag.
   `KURI-LINK:` followed by base32. Peer files and tickets written by 0.1.0 still
   read in later releases.
 
+## Unreleased
+
+### `kuri-link-gateway`
+
+- `--relay-access ADDR` lets an `iroh-relay` on the same machine ask the
+  gateway whom to carry (its `access.http.url`): the gateway, and the phones
+  and back ends paired with it, and no one else. Pairing a phone is then all
+  it takes for the relay to carry it away from home, and unpairing it stops
+  the relay carrying it from its next connection, with no list of keys to
+  keep in the relay's config. ADDR must be a loopback address.
+
 ## 0.3.0 — 2026-10-23
 
 Upgrade if a home runs more than one back end: one gateway now pairs the

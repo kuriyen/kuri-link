@@ -2001,6 +2001,9 @@ dependencies = [
 name = "kuri-link-gateway"
 version = "0.3.0"
 dependencies = [
+ "http-body-util",
+ "hyper",
+ "hyper-util",
  "kuri-link",
  "qrcode",
  "tokio",

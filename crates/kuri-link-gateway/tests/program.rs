@@ -2,7 +2,7 @@
 //! registered, and unpair, while it forwards a phone's requests to a back end
 //! behind it.
 
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -85,6 +85,31 @@ fn ticket(dir: &Path, who: &str) -> Ticket {
         .trim()
         .parse()
         .expect("the ticket reads")
+}
+
+/// Asks the gateway's access check at `at`, with `method`, whether the relay
+/// may carry `key`, as `iroh-relay` asks. Returns the status and the text.
+fn relay_check(at: &str, method: &str, key: Option<&str>) -> (u16, String) {
+    let mut stream = std::net::TcpStream::connect(at).expect("the check listens");
+    let key = key.map(|key| format!("X-Iroh-NodeId: {key}\r\n"));
+    write!(
+        stream,
+        "{method} / HTTP/1.1\r\nHost: {at}\r\n{}Content-Length: 0\r\nConnection: close\r\n\r\n",
+        key.unwrap_or_default()
+    )
+    .unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).unwrap();
+    let (head, text) = response.split_once("\r\n\r\n").expect("an HTTP response");
+    let status = head.split(' ').nth(1).unwrap().parse().unwrap();
+    (status, text.to_owned())
+}
+
+fn carries(at: &str, key: &str) -> bool {
+    match relay_check(at, "POST", Some(key)) {
+        (200, text) => text == "true",
+        other => panic!("{other:?}"),
+    }
 }
 
 /// A fresh directory under the system's temporary one, removed on drop.
@@ -236,6 +261,64 @@ async fn the_gateway_listens_on_one_address_when_told() {
         .await
         .expect("the phone pairs over loopback");
     phone.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_gateway_tells_its_relay_to_carry_what_is_paired_and_nothing_else() {
+    let dir = Scratch::new();
+    let at = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .to_string();
+    let (_gateway, ready) = start_with(&dir.0, &["--relay-access", &at]);
+    let gateway = ready.split(' ').nth(1).unwrap();
+    assert!(carries(&at, gateway), "the gateway itself");
+    assert!(!carries(&at, &NodeKey::generate().public().to_string()));
+
+    let phone = Node::builder().relays(Relays::None).bind().await.unwrap();
+    let id = phone.id().to_string();
+    assert!(!carries(&at, &id), "a phone not yet paired");
+    phone.pair(&ticket(&dir.0, "phone")).await.unwrap();
+    assert!(carries(&at, &id), "a paired phone");
+    command(&dir.0, &["unpair", &id]).unwrap();
+    assert!(!carries(&at, &id), "an unpaired phone");
+
+    let back_end_ticket = ticket(&dir.0, "back-end");
+    let back_end = Node::builder()
+        .relays(Relays::None)
+        .serve("echo", Methods::new())
+        .behind_gateway(back_end_ticket.addr.clone())
+        .bind()
+        .await
+        .unwrap();
+    let back_end_id = back_end.id().to_string();
+    assert!(!carries(&at, &back_end_id), "a back end not yet paired");
+    back_end.pair_gateway(&back_end_ticket).await.unwrap();
+    assert!(carries(&at, &back_end_id), "a paired back end");
+
+    // Only the relay's question gets an answer.
+    assert_eq!(relay_check(&at, "GET", Some(gateway)).0, 405);
+    assert_eq!(relay_check(&at, "POST", None).0, 400);
+    assert_eq!(relay_check(&at, "POST", Some("not-a-key")).0, 400);
+
+    phone.shutdown().await;
+    back_end.shutdown().await;
+}
+
+#[test]
+fn the_relay_check_stays_on_this_machine() {
+    let dir = Scratch::new();
+    let refused = Command::new(PROGRAM)
+        .arg("--dir")
+        .arg(&dir.0)
+        .args(["--relay-access", "192.0.2.1:3341"])
+        .output()
+        .unwrap();
+    assert!(!refused.status.success());
+    let said = String::from_utf8_lossy(&refused.stderr);
+    assert!(said.contains("not a loopback address"), "{said}");
+    assert!(!dir.0.exists(), "nothing is written");
 }
 
 #[test]
