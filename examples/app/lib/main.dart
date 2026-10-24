@@ -1,10 +1,11 @@
 // One app whose back end, `echo`, runs in this process or on another device.
 // Which one is a setting; the code that uses the back end is the same. It runs
-// on Linux and Android:
+// on Linux, Android, macOS and iOS:
 //
 //     flutter run -d linux                                       # in-process
 //     flutter run -d linux --dart-entrypoint-args=--backend=remote
-//     flutter run -d <android device>
+//     flutter run -d macos
+//     flutter run -d <android or iOS device>
 //
 // For a remote back end, start one first, then paste the ticket it prints or,
 // on a phone, scan the QR code it draws:
@@ -16,8 +17,9 @@
 // network.
 //
 // The app looks its back end up on the local network by mDNS
-// (`localDiscovery`), so at home it finds the back end even after the back
-// end's address there changed. Everyone on that network can see the lookups.
+// (`localDiscovery`), except on iOS, so at home it finds the back end even
+// after the back end's address there changed. Everyone on that network can see
+// the lookups.
 
 import 'dart:convert';
 import 'dart:ffi';
@@ -36,8 +38,10 @@ const app = 'echo';
 
 /// Whether the node looks back ends up on the local network by mDNS. On
 /// Android that also needs a multicast lock, which `MainActivity` takes when
-/// asked.
-const localDiscovery = true;
+/// asked. iOS lets an app send multicast only with an entitlement that Apple
+/// grants on request, so there the app does without, and finds its back end at
+/// the address it kept.
+final localDiscovery = !Platform.isIOS;
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -63,10 +67,18 @@ Future<String> dataDir() async => (await getApplicationSupportDirectory()).path;
 String keyPath(String dataDir) => '$dataDir/device.key';
 
 /// The app's one native library. On Linux it is bundled next to the
-/// executable; on Android it is in the APK, where the loader finds it by name.
-String nativeLibrary() => Platform.isAndroid
-    ? 'libkuri_link_echo.so'
-    : '${File(Platform.resolvedExecutable).parent.path}/lib/libkuri_link_echo.so';
+/// executable; on Android it is in the APK, where the loader finds it by name;
+/// on macOS it is in the bundle's Frameworks, and on iOS it is a framework
+/// there (`darwin/build_library.sh`).
+String nativeLibrary() {
+  final dir = File(Platform.resolvedExecutable).parent.path;
+  if (Platform.isAndroid) return 'libkuri_link_echo.so';
+  if (Platform.isMacOS) return '$dir/../Frameworks/libkuri_link_echo.dylib';
+  if (Platform.isIOS) {
+    return '$dir/Frameworks/kuri_link_echo.framework/kuri_link_echo';
+  }
+  return '$dir/lib/libkuri_link_echo.so';
+}
 
 /// Loads the app's one native library, which holds both the Kuri Link bindings
 /// and the echo back end, registers that back end, and starts this device's

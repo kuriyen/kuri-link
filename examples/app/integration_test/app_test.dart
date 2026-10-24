@@ -10,9 +10,10 @@
 // ../../target/debug). KURI_LINK_SCREENSHOTS names a directory to save a
 // screenshot of each back end's answers in.
 //
-// A phone or emulator cannot start a process on the host, so there the server
-// runs first and its ticket comes in as a define, or, with KURI_LINK_SCAN, the
-// app scans the QR code the server draws; see README.md:
+// A phone or emulator cannot start a process on the host, and the macOS app's
+// sandbox lets it start none outside its bundle, so there the server runs
+// first and its ticket comes in as a define, or, with KURI_LINK_SCAN, the app
+// scans the QR code the server draws; see README.md:
 //
 //     flutter test integration_test -d <device> --dart-define=KURI_LINK_TICKET=...
 //     flutter test integration_test -d <device> --dart-define=KURI_LINK_SCAN=true

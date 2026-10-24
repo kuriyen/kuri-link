@@ -117,10 +117,10 @@ DynamicLibrary.open(appLibrary)
 ```
 
 `examples/echo` is such a crate, and `examples/app` is a Flutter app built on
-it: its `linux/CMakeLists.txt` and `android/app/build.gradle.kts` run Cargo and
-bundle the library. An app
-with no local back end can use `libkuri_link_ffi.so` from this repository's
-build directly.
+it: its `linux/CMakeLists.txt`, `android/app/build.gradle.kts` and
+`darwin/build_library.sh` (for macOS and iOS) run Cargo and bundle the
+library. An app with no local back end can use `libkuri_link_ffi.so` from this
+repository's build directly.
 
 Generated code from two flutter_rust_bridge crates cannot share one library,
 so an app that wants its own Rust API in Dart as well has to generate it

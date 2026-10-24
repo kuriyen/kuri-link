@@ -30,6 +30,29 @@ depend on a tag.
   Nor does it add any more that only a device on the peer's network can reach
   it: the peer answered.
 
+### Dart package
+
+- The tests run on macOS too, against the `.dylib` Cargo builds there.
+
+### Examples
+
+- The example app runs on macOS and builds for iOS, devices and the
+  simulator. A build phase in each Xcode project runs
+  `darwin/build_library.sh`, which builds the library with Cargo for the
+  architectures Xcode builds, puts it in the app's Frameworks, as a framework
+  on iOS, and signs it. The macOS app is sandboxed, with the entitlements to
+  dial and to be reached. On iOS the app does not look its back end up by
+  mDNS, which needs an entitlement Apple grants on request.
+- `Cargo.lock` keeps libc at 0.2.189: netdev, which iroh uses to list network
+  interfaces, does not build for iOS against later versions. An app built for
+  iOS needs the same pin until a release of netdev builds.
+
+### Documentation
+
+- `docs/integration.md` covers macOS and iOS: building, placing and signing
+  the library, the entitlements and the local network permission, and the
+  libc pin.
+
 ## 0.3.1 — 2026-10-24
 
 Upgrade if a home runs its own relay next to the gateway: the gateway can now

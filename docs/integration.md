@@ -28,7 +28,9 @@ in [`design.md`](design.md).
 |---|---|
 | Linux desktop, x86_64 | Works. `examples/app` builds and runs, and its integration test passes with the back end in process and in another process over loopback. |
 | Android, arm64-v8a and x86_64 | Works. `examples/app` builds for both ABIs, and has been tested on a phone (WiFi, mobile data, through a relay, switching between networks; from outside the home with no relay, after the back end restarted and after it moved to another port) and on the emulator. |
-| macOS, iOS, Windows | Not yet. Nothing here builds or bundles the native library for them, and nothing has been tested on them. |
+| macOS, Apple silicon | Works. The Rust tests and the Dart package's tests pass, and `examples/app` builds, for both architectures in release, and runs; its integration test passes with the back end in process and in another process over loopback. |
+| iOS | Builds. `examples/app` builds for devices and the simulator, but has not run on either yet. Needs libc pinned for now (step 2). |
+| Windows | Not yet. Nothing here builds or bundles the native library for it, and nothing has been tested on it. |
 | Web | Not yet. A browser cannot open raw UDP, so a web front end could only ever reach its back end through a relay. |
 
 ## Versions
@@ -130,6 +132,32 @@ loads it from. Copy the steps from `examples/app`:
   rustup target add aarch64-linux-android x86_64-linux-android
   cargo install cargo-ndk
   ```
+- **macOS and iOS.** A build phase of the Runner target in each Xcode project
+  runs `darwin/build_library.sh`. It runs `cargo build --lib` for each
+  architecture Xcode builds, joins the results with `lipo`, names the library
+  by `@rpath`, puts it in the app's Frameworks and signs it with the app's
+  identity. iOS loads code only from frameworks, so there the library is the
+  binary of a framework with an `Info.plist` of its own. It needs the targets:
+
+  ```sh
+  rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+  ```
+
+  Run Cargo as a terminal would, not with Xcode's environment as it stands.
+  Xcode's clang finds an SDK only through `SDKROOT`, which names the app's
+  platform and is wrong for the build scripts Cargo compiles to run on the
+  Mac; and an iOS build sets `MACOSX_DEPLOYMENT_TARGET` to the SDK's version,
+  which can be newer than the Mac. Keep the deployment target of the platform
+  being built: rustc and the C compiler must agree on it, or the link fails.
+
+  **For iOS, pin libc for now.** netdev, which iroh uses to list network
+  interfaces, does not build for iOS against libc 0.2.190 or later, which
+  declares the `in6_ifreq` it uses on macOS only. Until a release of netdev
+  builds, keep libc at 0.2.189 in the app's lockfile, as this repository does:
+
+  ```sh
+  cargo update -p libc --precise 0.2.189
+  ```
 
 At start-up, load the library, register the in-process back end, and start
 this device's node:
@@ -140,9 +168,15 @@ import 'dart:io';
 
 import 'package:kuri_link/kuri_link.dart';
 
-String nativeLibrary() => Platform.isAndroid
-    ? 'libmy_app_native.so'
-    : '${File(Platform.resolvedExecutable).parent.path}/lib/libmy_app_native.so';
+String nativeLibrary() {
+  final dir = File(Platform.resolvedExecutable).parent.path;
+  if (Platform.isAndroid) return 'libmy_app_native.so';
+  if (Platform.isMacOS) return '$dir/../Frameworks/libmy_app_native.dylib';
+  if (Platform.isIOS) {
+    return '$dir/Frameworks/my_app_native.framework/my_app_native';
+  }
+  return '$dir/lib/libmy_app_native.so';
+}
 
 Future<LinkNode> startLink(String dataDir, List<String> relays) async {
   final library = nativeLibrary();
@@ -159,6 +193,13 @@ back end it pairs with knows it by that key. Keep it in the app's private
 storage (`examples/app` uses `getApplicationSupportDirectory()` from
 `path_provider`) and keep it across updates, or the device has to pair again.
 One node per app process is enough.
+
+**Apple's permissions.** A sandboxed macOS app needs
+`com.apple.security.network.client` and `com.apple.security.network.server`
+in its entitlements, Debug and Release alike, or its node can neither dial nor
+be reached. iOS, and macOS since version 15, ask the user before an app uses
+the local network; say why in `Info.plist` under
+`NSLocalNetworkUsageDescription`. Loopback needs no permission.
 
 ## 3. Choose the back end
 
@@ -506,6 +547,11 @@ val multicast = wifi.createMulticastLock("my_app/mdns").apply {
 `MainActivity.kt` in `examples/app` does both, when the app asks for it. A
 node that serves nothing never announces itself.
 
+iOS lets an app send multicast only with the
+`com.apple.developer.networking.multicast` entitlement, which Apple grants on
+request. Without it, leave `localDiscovery` off on iOS, as `examples/app`
+does.
+
 **A back end only reachable at home is given up on in five seconds.** When
 none of a back end's addresses can be reached from outside its own network
 and it names no relay, a device elsewhere would wait 30 seconds for an answer
@@ -531,4 +577,5 @@ a second, which is a quick way to see how an app behaves on a real network.
   inside the home can reach it elsewhere to tell it, and nothing outside the
   home knows.
 - **No typed Dart clients.** Dart calls methods by name with CBOR bytes.
-- **No macOS, iOS or Windows builds**, as above.
+- **No Windows builds, and no iOS device or simulator has run the app**, as
+  above.

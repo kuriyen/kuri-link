@@ -1,6 +1,6 @@
 # Example app
 
-A Flutter app for Linux and Android whose back end, `echo` from
+A Flutter app for Linux, Android, macOS and iOS whose back end, `echo` from
 `examples/echo`, runs in the app's own process or on another device. The choice
 is a switch at the top of the window; `EchoPanel` in `lib/main.dart`, the code
 that calls the back end, is the same either way.
@@ -8,7 +8,9 @@ that calls the back end, is the same either way.
 The app ships one native library, `libkuri_link_echo.so`: the Kuri Link
 bindings and the `echo` back end together. See `dart/README.md` for why it must
 be one library. Each platform's build runs Cargo for it:
-`linux/CMakeLists.txt` on Linux, `android/app/build.gradle.kts` on Android.
+`linux/CMakeLists.txt` on Linux, `android/app/build.gradle.kts` on Android,
+and `darwin/build_library.sh`, a build phase of the Xcode project, on macOS
+and iOS.
 
 ## Run on Linux
 
@@ -46,6 +48,46 @@ Android does not let native code watch the network, so `MainActivity` does:
 when the default network changes, say from WiFi to mobile data, it tells the
 Dart side, which calls `node.networkChanged()`. Without that, requests stall
 for about as long as the old path takes to time out, some 15 seconds.
+
+## Run on macOS
+
+```sh
+flutter run -d macos
+```
+
+Xcode runs Cargo in a build phase, from its own environment, so Cargo has to
+be on Xcode's PATH or in `~/.cargo/bin`. The build puts the library in the
+app's `Contents/Frameworks` and signs it with the app's identity.
+
+The app is sandboxed, with the entitlements to open connections and to accept
+them (`macos/Runner/*.entitlements`). The sandbox lets it start no program
+outside its bundle, so its integration test cannot start a server itself:
+start one first and pass its ticket, as for a phone below.
+
+```sh
+cargo run -p kuri-link-echo --bin kuri-link-echo-server -- --bind 127.0.0.1:0
+flutter test integration_test -d macos --dart-define=KURI_LINK_TICKET=KURI-LINK:...
+```
+
+## Run on iOS
+
+```sh
+rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+flutter run -d <device or simulator>
+```
+
+A build for the simulator in general, as `flutter build ios --simulator`
+makes, is for both of the simulator's architectures, hence the x86_64 target.
+
+iOS loads code only from frameworks, so there the same build phase makes the
+library the binary of `kuri_link_echo.framework`, in the app's `Frameworks`.
+A device needs a development team to sign the app with, chosen in Xcode
+(`ios/Runner.xcworkspace`).
+
+`Info.plist` says why the app uses the camera, for the scan button, and the
+local network. iOS lets an app send multicast only with an entitlement Apple
+grants on request, so on iOS the app does not look its back end up by mDNS; at
+home it reaches the back end at the address it kept.
 
 ## Pair by QR code
 
@@ -90,7 +132,7 @@ waits while the network changes under it holds up the next ones, so the log
 shows the gap.
 
 The log is in the app's external files directory on Android, which `adb` can
-read without root, and in its support directory on Linux:
+read without root, and in its support directory elsewhere:
 
 ```sh
 adb pull /sdcard/Android/data/io.github.kuriyen.kuri_link_example/files/ .
@@ -99,8 +141,9 @@ adb pull /sdcard/Android/data/io.github.kuriyen.kuri_link_example/files/ .
 ## Where the app keeps things
 
 The device key and the paired address live in the app's support directory:
-`~/.local/share/io.github.kuriyen.kuri_link_example` on Linux, and the app's
-private storage on Android.
+`~/.local/share/io.github.kuriyen.kuri_link_example` on Linux, the sandbox's
+`~/Library/Containers/io.github.kuriyen.kuriLinkExample/Data/Library/Application Support/io.github.kuriyen.kuriLinkExample`
+on macOS, and the app's private storage on Android and iOS.
 
 ## Test
 

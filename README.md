@@ -86,7 +86,7 @@ crates/kuri-link-ffi      the plain-typed surface a Dart front end binds to
 crates/kuri-link-gateway  a home's gateway as a program: pairs phones and back ends
 dart/                     the Dart package, kuri_link (bindings generated; see its README)
 examples/echo             an example back end: linked into an app, or run as a server
-examples/app              a Flutter app for Linux and Android on that back end, in-process or remote
+examples/app              a Flutter app for Linux, Android, macOS and iOS on that back end, in-process or remote
 docs/integration.md       putting Kuri Link into an app, step by step
 docs/design.md            wire format and design decisions
 ```
