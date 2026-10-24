@@ -165,8 +165,8 @@ impl Gateway {
     ///
     /// To unpair a back end, remove it from [`Pairing::peers`]: its
     /// registration ends at once, and its application names are released.
-    /// The gateway stops accepting them, as any name no back end registered,
-    /// until a back end registers them again.
+    /// The gateway stops accepting them, as it does a name no back end
+    /// registered, until a back end registers them again.
     pub fn pairing(&self) -> &Pairing {
         &self.inner.back_ends
     }
@@ -261,6 +261,13 @@ impl Gateway {
     fn claim(&self, back_end: PeerId, apps: &[String], conn: Connection) -> Result<u64, Fault> {
         let peers = self.inner.back_ends.peers();
         let mut state = self.state();
+        // The door admitted `back_end`, but it may have been unpaired since and
+        // its names released. `release_unpaired` takes the same lock, so either
+        // this sees it gone, or the release that its unpairing sets off sees
+        // the names claimed here.
+        if !peers.contains(&back_end) {
+            return Err(Fault::new(FaultCode::Denied, "unpaired from the gateway"));
+        }
         for app in apps {
             if state.local.contains(app) {
                 return Err(Fault::new(
@@ -689,10 +696,8 @@ mod tests {
         }
     }
 
-    /// Calls `whoami` at `at` as `key`, with a header that names another
-    /// caller, another application and claims of the front end's own making,
-    /// as only a gateway's should.
-    async fn whoami_naming_another(key: NodeKey, at: PeerAddr) -> Value {
+    /// Dials [`APP`] at `at` as `key`, over loopback.
+    async fn dial(key: NodeKey, at: PeerAddr) -> (Endpoint, Connection) {
         let endpoint = Endpoint::builder(presets::Minimal)
             .secret_key(key.into_iroh())
             .relay_mode(RelayMode::Disabled)
@@ -706,6 +711,14 @@ mod tests {
             .connect(at.to_iroh(), &crate::alpn(APP))
             .await
             .unwrap();
+        (endpoint, conn)
+    }
+
+    /// Calls `whoami` at `at` as `key`, with a header that names another
+    /// caller, another application and claims of the front end's own making,
+    /// as only a gateway's should.
+    async fn whoami_naming_another(key: NodeKey, at: PeerAddr) -> Value {
+        let (endpoint, conn) = dial(key, at).await;
         let (mut send, mut recv) = conn.open_bi().await.unwrap();
         let mut header = Header::new(Op::Call, "whoami", Value::Null, None);
         header.app = Some("media".into());
@@ -793,6 +806,36 @@ mod tests {
         );
         camera.shutdown().await;
         home.shutdown().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_back_end_unpaired_before_it_claims_claims_nothing() {
+        let camera = Node::builder()
+            .relays(Relays::None)
+            .bind_addr(loopback())
+            .serve(APP, whoami())
+            .bind()
+            .await
+            .unwrap();
+        let back_ends = PeerSet::new();
+        let gateway = Gateway::new(back_ends.clone());
+        let key = NodeKey::generate();
+        let back_end = key.public();
+        let (endpoint, conn) = dial(key, camera.bound_addr()).await;
+        let apps = [APP.to_owned()];
+
+        // The door admitted it, then it was unpaired before its claim ran.
+        back_ends.insert(back_end).unwrap();
+        back_ends.remove(&back_end).unwrap();
+        let fault = gateway.claim(back_end, &apps, conn.clone()).unwrap_err();
+        assert_eq!(fault.code, FaultCode::Denied, "{fault}");
+        assert!(gateway.names().is_empty());
+
+        back_ends.insert(back_end).unwrap();
+        gateway.claim(back_end, &apps, conn).unwrap();
+        assert_eq!(gateway.names(), apps);
+        endpoint.close().await;
+        camera.shutdown().await;
     }
 
     fn args(apps: &[&str]) -> Value {

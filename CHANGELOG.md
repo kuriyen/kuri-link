@@ -36,13 +36,14 @@ depend on a tag.
   to it, and `Node::gateway_addr` follows the gateway's address.
 - At the gateway, an application's name belongs to the first back end that
   registered it, until that back end is unpaired; `Gateway::open` keeps the
-  owners in a file. Unpairing a back end releases its names, even while the
-  gateway is down: the gateway stops accepting them, as any name no back end
-  registered. A front end is authorized at the gateway, and the back end
-  sees it as the caller. While no back end serves an application, the gateway
-  answers its requests with `FaultCode::Unavailable`. A back end that stops
-  without closing its connection is taken for gone after 10 seconds of
-  silence, and one that registers again replaces its old connection at once.
+  owners in a file. Unpairing a back end releases its names, at once or, if
+  the gateway is down, when it next starts: the gateway stops accepting them,
+  as it does a name no back end registered. A front end is authorized at the
+  gateway, and the back end sees it as the caller. While no back end serves an
+  application, the gateway answers its requests with
+  `FaultCode::Unavailable`. A back end that stops without closing its
+  connection is taken for gone after 10 seconds of silence, and one that
+  registers again replaces its old connection at once.
   A back end dials the gateway through the relays in the gateway's address
   even with `Relays::None`, so a gateway that moved is found by its key.
 - `PeerAddr` has a text form (`Display` and `FromStr`) for keeping an address
