@@ -262,9 +262,18 @@ impl BackEnd {
             _ = addresses => {}
             _ = requests => {}
         }
+        // Silence ends the connection with a timeout, or with a reset if the
+        // path comes back after the gateway gave the connection up and
+        // before this end did: the gateway's idle timer runs from the last
+        // packet it heard, and this end's restarts once more at the first
+        // keep-alive it sends after that, up to a second later. A gateway
+        // that ended the registration closes the connection instead.
         Ok(Held {
             lasted: since.elapsed(),
-            silent: matches!(conn.close_reason(), Some(ConnectionError::TimedOut)),
+            silent: matches!(
+                conn.close_reason(),
+                Some(ConnectionError::TimedOut | ConnectionError::Reset)
+            ),
         })
     }
 
