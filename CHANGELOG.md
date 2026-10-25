@@ -38,8 +38,11 @@ depend on a tag.
   keep-alives on the way show the back end is there. So does the reply to a
   request made while the device changes networks, which waits for a path on
   the new network as before: the back end answers iroh's tries of the paths
-  there. Only if no path at all answers for 8 seconds does such a request
-  fail, and the next one dial again.
+  there. The cost: a request also fails if no path at all answers for 8
+  seconds while it waits, as when WiFi fades on the way out before the phone
+  moves to mobile data, where it used to get its reply if the network came
+  back within the idle timeout. The connection closes with it, and every
+  stream open on it ends too.
 
 ### Dart package
 

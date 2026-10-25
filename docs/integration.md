@@ -473,8 +473,9 @@ reaches the gateway without the relay; a pairing screen should say so.
 **Android needs a hint when the network changes.** Native code there cannot
 watch the network, so without help a switch between WiFi and mobile data
 stalls requests until the old path times out, which took 15 to 17 seconds
-on a phone. Watch the default network from the activity and pass each change
-to Dart:
+on a phone. If the connection hears nothing at all for 8 seconds of that, a
+request waiting on it fails instead, as below. Watch the default network from
+the activity and pass each change to Dart:
 
 ```kotlin
 import android.content.Context
@@ -559,10 +560,12 @@ that cannot come. It gives up after five instead, and the `LinkError` says
 that only a device on the back end's network can reach it.
 
 **A lost connection is dialed again.** When a remote client's connection is
-lost, as a phone's is when it is out of signal for longer than QUIC's idle
-timeout, the client dials again before its next request. A request already
-under way when the connection is lost fails and is not sent again, since it
-may already have taken effect; whether to retry it is the app's decision.
+lost, the client dials again before its next request. A phone out of signal
+loses its connection after QUIC's idle timeout, 30 seconds, or after 8
+seconds if a request is waiting meanwhile, as below. Everything on the
+connection ends with it: every raw stream opened on it, and every request
+under way, which fails and is not sent again, since it may already have taken
+effect; whether to retry it is the app's decision.
 
 **A back end that crashed is noticed within seconds.** A back end that stops
 cleanly closes its connections, and its clients dial again at once. One that
@@ -577,9 +580,13 @@ a reply, the two sides' keep-alives pass every five seconds.
 Nor is a phone that changes networks, as from WiFi to mobile data: while iroh
 looks for a path on the new network, the back end answers its tries on the
 paths that work, and a request waits until one of them carries it, as before.
-Only if no path at all answers for 8 seconds, say because the back end can be
-reached neither directly nor through a relay from the new network, does the
-request fail, and the next one dial again.
+Only if no path at all answers for 8 seconds does the request fail, and the
+next one dial again: say because the phone has had no working network for
+that long, as when WiFi fades on the way out before the phone moves to mobile
+data, or because the back end can be reached neither directly nor through a
+relay from the new network. Such a request used to get its reply if the
+network came back within the idle timeout. This is what noticing a crashed
+back end within seconds costs.
 
 `client.path()` reports the path requests use now, `LinkRoute.direct` or
 `LinkRoute.relay`, with its round-trip time; it is `null` in process and while
