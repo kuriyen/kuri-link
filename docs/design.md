@@ -287,7 +287,10 @@ with ALPN kuri-link/1/<app>    pairing and authorizer       and register their a
   each such loss. A registration that held less than 30 seconds makes the
   next wait longer, so that two back ends sharing a key take it from each
   other ever more slowly, unless its connection went silent: the gateway
-  closes the connection of the one it took the registration from.
+  closes the connection of the one it took the registration from. A change
+  in the back end's own network, as when its WiFi comes back, dials at once
+  and starts the waits over, since failures on the old network say nothing
+  about the new one.
 
 Wire additions, all within version 1:
 

@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use ciborium::Value;
 use iroh::endpoint::{Connection, ConnectionError, RecvStream, SendStream, VarInt};
-use iroh::Endpoint;
+use iroh::{Endpoint, Watcher};
 use tokio::sync::{watch, Notify};
 
 use crate::addr::{AddrWire, PeerAddr, PeerId};
@@ -151,6 +151,9 @@ async fn run(
     retry: Arc<Notify>,
 ) {
     let mut wait = FIRST_WAIT;
+    // This device's own addresses, which change as its network goes and
+    // comes back.
+    let mut addrs = endpoint.watch_addr();
     loop {
         let addr = gateway.borrow().clone();
         let ended = match dial(&endpoint, &addr, GATEWAY_APP, None).await {
@@ -178,11 +181,20 @@ async fn run(
                 registration.send_replace(Registration::Refused(fault));
             }
         }
-        tokio::select! {
-            _ = tokio::time::sleep(wait) => {}
-            _ = retry.notified() => {}
-        }
-        wait = (wait * 2).min(LONGEST_WAIT);
+        // Failures on a network that has since changed say nothing about the
+        // new one, so a change dials at once and starts the waits over:
+        // after WiFi comes back, the wait doubled while it was down would
+        // otherwise run on for up to its longest.
+        let changed = tokio::select! {
+            _ = tokio::time::sleep(wait) => false,
+            _ = retry.notified() => false,
+            Ok(_) = addrs.updated() => true,
+        };
+        wait = if changed {
+            FIRST_WAIT
+        } else {
+            (wait * 2).min(LONGEST_WAIT)
+        };
     }
 }
 

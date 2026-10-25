@@ -596,7 +596,10 @@ connection after 4 seconds of silence, which suits a back end on the
 gateway's own network. One that reaches its gateway through a relay, or over
 WiFi that drops out, registers again whenever nothing passes for 3 to 4
 seconds, with `unavailable` meanwhile. It dials again a second after each such
-loss, however short the registration held.
+loss, however short the registration held. While the gateway cannot be
+reached, the waits between tries double, up to 30 seconds; when the back end's
+own network changes, as when its WiFi comes back, it dials at once. A gateway
+whose own network comes back is found at the next try.
 
 `client.path()` reports the path requests use now, `LinkRoute.direct` or
 `LinkRoute.relay`, with its round-trip time; it is `null` in process and while

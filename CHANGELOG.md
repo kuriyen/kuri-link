@@ -20,6 +20,19 @@ depend on a tag.
   `KURI-LINK:` followed by base32. Peer files and tickets written by 0.1.0 still
   read in later releases.
 
+## Unreleased
+
+### `kuri-link`
+
+- **Fixed: a back end whose WiFi came back took up to 30 seconds more to
+  register.** While its network was down, each try to reach the gateway
+  failed and doubled the wait before the next, up to 30 seconds, and the
+  wait ran on after the network came back. Now a change in the back end's
+  own addresses, as when WiFi comes back, dials the gateway at once and
+  starts the waits over. After outages of 45 and 90 seconds it registered
+  again 0.4 to 1.4 seconds after its address came back, where it took 7 to 8
+  and 30 seconds.
+
 ## 0.3.2 — 2026-10-25
 
 Upgrade to recover sooner when a connection goes quiet: a request to a back

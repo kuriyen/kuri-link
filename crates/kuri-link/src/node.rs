@@ -298,7 +298,8 @@ impl NodeBuilder {
     /// accepts no connection of its own. It must have paired with the gateway
     /// first ([`Node::pair_gateway`]). If the connection is lost, or the
     /// gateway refuses, the node dials again, waiting longer each time, up to
-    /// half a minute; [`Node::registration`] says where it stands, and
+    /// half a minute, and at once when its own network changes, as when its
+    /// WiFi comes back; [`Node::registration`] says where it stands, and
     /// [`Node::gateway_addr`] is the gateway's address as it last heard.
     /// It dials through the relays in that address as well, even with
     /// [`Relays::None`], so a gateway that uses a relay is found wherever its
