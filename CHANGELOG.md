@@ -20,7 +20,19 @@ depend on a tag.
   `KURI-LINK:` followed by base32. Peer files and tickets written by 0.1.0 still
   read in later releases.
 
-## Unreleased
+## 0.3.2 — 2026-10-25
+
+Upgrade to recover sooner when a connection goes quiet: a request to a back
+end that crashed fails after 8 seconds rather than 30, and a back end behind a
+gateway registers again within seconds of the gateway crashing or the path to
+it dropping out, where it took 15 seconds or more. This was tested on a phone,
+at home and over mobile data, and with a back end at home behind its gateway.
+
+One thing to check before upgrading: a request now fails when nothing at all
+is heard for 8 seconds while it waits, so a caller that counted on a reply
+after a longer outage should try again. The Rust and Dart APIs, wire format 1
+and the text forms are as in 0.3.1. The example app now runs on macOS and on
+the iOS simulator as well.
 
 ### `kuri-link`
 

@@ -1959,7 +1959,7 @@ dependencies = [
 
 [[package]]
 name = "kuri-link"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "ciborium",
  "data-encoding",
@@ -1978,7 +1978,7 @@ dependencies = [
 
 [[package]]
 name = "kuri-link-echo"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "iroh-relay",
  "kuri-link",
@@ -1989,7 +1989,7 @@ dependencies = [
 
 [[package]]
 name = "kuri-link-ffi"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "ciborium",
  "flutter_rust_bridge",
@@ -1999,7 +1999,7 @@ dependencies = [
 
 [[package]]
 name = "kuri-link-gateway"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "http-body-util",
  "hyper",
