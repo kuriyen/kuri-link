@@ -60,6 +60,11 @@ const TICKET_TTL: Duration = Duration::from_secs(10 * 60);
 /// router answers within a second; one that has not answered by now will not.
 const MAPPING_WAIT: Duration = Duration::from_secs(5);
 
+/// Why the server exits when its node's endpoint closed by itself: it would
+/// stay unreachable, and started again, it binds afresh.
+const CLOSED: &str = "the network endpoint closed by itself, as iroh does when the \
+                      --bind address goes away and there is no --relay";
+
 #[tokio::main]
 async fn main() {
     if let Err(e) = run().await {
@@ -187,9 +192,13 @@ async fn run() -> Result<(), String> {
              server's key and addresses, and only paired ones get in"
         );
     }
-    stopped().await;
+    let closed = node.closed();
+    let result = tokio::select! {
+        () = stopped() => Ok(()),
+        () = closed => Err(CLOSED.to_owned()),
+    };
     node.shutdown().await;
-    Ok(())
+    result
 }
 
 /// Finishes when the server is told to stop: Ctrl-C, or SIGTERM from a
@@ -249,12 +258,15 @@ async fn behind(builder: NodeBuilder, file: &Path, ticket: Option<Ticket>) -> Re
     let mut registration = node.registration().expect("behind a gateway");
     let stop = stopped();
     tokio::pin!(stop);
-    loop {
+    let closed = node.closed();
+    tokio::pin!(closed);
+    let result = loop {
         tokio::select! {
-            _ = &mut stop => break,
+            _ = &mut stop => break Ok(()),
+            () = &mut closed => break Err(CLOSED.to_owned()),
             changed = addr.changed() => {
                 if changed.is_err() {
-                    break;
+                    break Ok(());
                 }
                 let now = addr.borrow_and_update().clone();
                 keep(&now)?;
@@ -262,15 +274,15 @@ async fn behind(builder: NodeBuilder, file: &Path, ticket: Option<Ticket>) -> Re
             }
             changed = registration.changed() => {
                 if changed.is_err() {
-                    break;
+                    break Ok(());
                 }
                 let now = registration.borrow_and_update().clone();
                 eprintln!("{}", registered(&now));
             }
         }
-    }
+    };
     node.shutdown().await;
-    Ok(())
+    result
 }
 
 fn registered(registration: &Registration) -> String {

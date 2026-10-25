@@ -32,6 +32,24 @@ depend on a tag.
   starts the waits over. After outages of 45 and 90 seconds it registered
   again 0.4 to 1.4 seconds after its address came back, where it took 7 to 8
   and 30 seconds.
+- `Node::closed()` finishes once the node's endpoint has closed: after
+  `Node::shutdown`, or on its own when iroh gave up on the network under it.
+  iroh does that for good when the one address a node is bound to goes away
+  and there is no relay to fall back on, and the node stays unreachable after
+  the address comes back. Only a node that serves notices by itself.
+
+### `kuri-link-gateway`
+
+- **Changed: the gateway exits with an error when its endpoint closes by
+  itself.** Bound with `--bind` to one address and given no `--relay`, a
+  gateway whose address went away, as when WiFi drops and the address lapses,
+  stayed unreachable after the address came back and ran on without a word.
+  Now it says why and exits, so that whatever runs it starts it again.
+
+### Examples
+
+- `kuri-link-echo-server` exits with an error, too, when its endpoint closes
+  by itself.
 
 ## 0.3.2 — 2026-10-25
 

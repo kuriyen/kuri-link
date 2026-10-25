@@ -711,6 +711,18 @@ impl Node {
         self.uplink.as_ref().map(Uplink::gateway_addr)
     }
 
+    /// Finishes once the node's endpoint has closed: after
+    /// [`shutdown`](Node::shutdown), or on its own when iroh gave up on the
+    /// network under it. iroh does that for good when the one address a node
+    /// is bound to goes away and there is no relay to fall back on, and the
+    /// node stays unreachable after the address comes back. A program should
+    /// then exit, so that whatever runs it starts it again. Only a node that
+    /// serves notices by itself; one that only connects finds out from its
+    /// failing connections.
+    pub fn closed(&self) -> impl std::future::Future<Output = ()> + Send + 'static {
+        self.endpoint.closed()
+    }
+
     /// Stops serving, asks the router to stop forwarding the node's port, and
     /// closes the endpoint.
     pub async fn shutdown(self) {
@@ -1653,5 +1665,26 @@ mod tests {
             start.elapsed()
         );
         node.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn closed_finishes_when_the_endpoint_closes_and_not_before() {
+        let node = Node::builder()
+            .bind_addr("127.0.0.1:0".parse().unwrap())
+            .serve("echo", crate::Methods::new())
+            .bind()
+            .await
+            .unwrap();
+        let mut closed = Box::pin(node.closed());
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), &mut closed)
+                .await
+                .is_err(),
+            "closed while the endpoint was open"
+        );
+        node.shutdown().await;
+        tokio::time::timeout(Duration::from_secs(5), closed)
+            .await
+            .expect("still open after shutdown");
     }
 }

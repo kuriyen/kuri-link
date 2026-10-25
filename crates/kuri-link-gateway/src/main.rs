@@ -278,7 +278,9 @@ async fn serve(dir: &Path, options: Options) -> Result<(), String> {
     logging();
 
     let mut terminate = signal(SignalKind::terminate()).map_err(|e| e.to_string())?;
-    loop {
+    let closed = home.node.closed();
+    tokio::pin!(closed);
+    let gave_up = loop {
         tokio::select! {
             accepted = control.accept() => match accepted {
                 Ok((stream, _)) => home.answer(stream).await,
@@ -287,12 +289,21 @@ async fn serve(dir: &Path, options: Options) -> Result<(), String> {
                     tokio::time::sleep(ACCEPT_RETRY).await;
                 }
             },
-            _ = tokio::signal::ctrl_c() => break,
-            _ = terminate.recv() => break,
+            _ = tokio::signal::ctrl_c() => break false,
+            _ = terminate.recv() => break false,
+            () = &mut closed => break true,
         }
-    }
+    };
     let _ = std::fs::remove_file(dir.join("control"));
     home.node.shutdown().await;
+    if gave_up {
+        // It would stay unreachable; started again, it binds afresh.
+        return Err(
+            "the network endpoint closed by itself, as iroh does when the \
+                    --bind address goes away and there is no --relay"
+                .into(),
+        );
+    }
     Ok(())
 }
 
