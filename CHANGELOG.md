@@ -55,6 +55,16 @@ depend on a tag.
   on the gateway's own network; one that reaches it through a relay, or over
   WiFi that drops out, registers again whenever nothing passes for 3 to 4
   seconds.
+- **Fixed: a back end whose connection to its gateway kept going silent
+  waited ever longer to register again.** A registration that held less than
+  30 seconds counts as a failure, which doubles the wait before the next try,
+  up to 30 seconds, so that two back ends sharing a key take the registration
+  from each other ever more slowly. It counted a registration whose
+  connection went silent too, as on a path through a relay or over WiFi that
+  drops out, or when the gateway crashed. Now the back end dials again a
+  second after such a loss, however short the registration held. Two back
+  ends sharing a key still slow down: the gateway closes the connection of
+  the one it took the registration from.
 
 ### Dart package
 

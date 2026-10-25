@@ -283,9 +283,11 @@ with ALPN kuri-link/1/<app>    pairing and authorizer       and register their a
 - **These timers suit a back end on the gateway's network,** the usual case
   at home. One that reaches the gateway through a relay, or over WiFi that
   drops out, registers again whenever nothing passes for 3 to 4 seconds, and
-  its apps answer `unavailable` until it has. A registration that held less
-  than 30 seconds counts as a failure, as when two back ends share a key, so
-  on such a path the waits between its tries can grow to 30 seconds.
+  its apps answer `unavailable` until it has; it dials again a second after
+  each such loss. A registration that held less than 30 seconds makes the
+  next wait longer, so that two back ends sharing a key take it from each
+  other ever more slowly, unless its connection went silent: the gateway
+  closes the connection of the one it took the registration from.
 
 Wire additions, all within version 1:
 

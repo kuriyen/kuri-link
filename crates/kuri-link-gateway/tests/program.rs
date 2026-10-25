@@ -300,6 +300,63 @@ async fn after_the_gateway_crashed_its_back_end_registers_again_within_seconds()
     back_end.shutdown().await;
 }
 
+/// A registration lost to silence says nothing against dialing again soon,
+/// however short it held. So a back end whose gateway crashes again and again,
+/// each time soon after it registered, registers again within seconds each
+/// time, as one does on a path that keeps dropping out.
+#[tokio::test(flavor = "multi_thread")]
+async fn however_often_the_gateway_crashes_its_back_end_registers_again_within_seconds() {
+    let dir = Scratch::new();
+    let (mut gateway, _) = start(&dir.0);
+    let back_end_ticket = ticket(&dir.0, "back-end");
+    let back_end = Node::builder()
+        .relays(Relays::None)
+        .serve(
+            "echo",
+            Methods::new().unary("echo", |_, args| async move { Ok(args) }),
+        )
+        .behind_gateway(back_end_ticket.addr.clone())
+        .bind()
+        .await
+        .unwrap();
+    back_end
+        .pair_gateway(&back_end_ticket)
+        .await
+        .expect("pairs");
+    let mut registration = back_end.registration().unwrap();
+    tokio::time::timeout(
+        Duration::from_secs(10),
+        registration.wait_for(|r| *r == Registration::Registered),
+    )
+    .await
+    .expect("registers in time")
+    .unwrap();
+
+    // Each crash comes as soon as the back end has registered again. Were
+    // those short registrations failures, the waits would have doubled to 8
+    // seconds by the fourth.
+    let served = format!("echo served by {}", back_end.id());
+    for crash in 1..=4 {
+        drop(gateway);
+        let crashed = tokio::time::Instant::now();
+        (gateway, _) = start(&dir.0);
+        while !command(&dir.0, &["status"]).unwrap().contains(&served) {
+            assert!(
+                crashed.elapsed() < Duration::from_secs(40),
+                "the back end never registered again after crash {crash}"
+            );
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        let after = crashed.elapsed();
+        assert!(
+            after < Duration::from_secs(10),
+            "the back end registered again {after:?} after crash {crash}"
+        );
+    }
+
+    back_end.shutdown().await;
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn the_gateway_listens_on_one_address_when_told() {
     let dir = Scratch::new();

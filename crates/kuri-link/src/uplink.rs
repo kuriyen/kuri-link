@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use ciborium::Value;
-use iroh::endpoint::{Connection, RecvStream, SendStream, VarInt};
+use iroh::endpoint::{Connection, ConnectionError, RecvStream, SendStream, VarInt};
 use iroh::Endpoint;
 use tokio::sync::{watch, Notify};
 
@@ -24,7 +24,10 @@ const LONGEST_WAIT: Duration = Duration::from_secs(30);
 
 /// How long a registration must hold for the waits to start over. Shorter
 /// ones count as failures, so that two back ends with one key, each taking
-/// the registration from the other, do so ever more slowly.
+/// the registration from the other, do so ever more slowly: the gateway
+/// closes the connection of the one it took the registration from. One whose
+/// connection went silent instead, as when the gateway crashed or the path to
+/// it dropped out, starts the waits over however short it held.
 const HELD: Duration = Duration::from_secs(30);
 
 /// How long the gateway or a back end waits to hear from the other before it
@@ -160,7 +163,7 @@ async fn run(
         };
         match ended {
             Ok(held) => {
-                if held >= HELD {
+                if held.silent || held.lasted >= HELD {
                     wait = FIRST_WAIT;
                 }
                 registration.send_replace(Registration::Connecting);
@@ -189,16 +192,22 @@ enum Ended {
     Refused(Fault),
 }
 
+/// How a registration ended: after how long, and whether its connection went
+/// silent rather than the gateway ending it.
+struct Held {
+    lasted: Duration,
+    silent: bool,
+}
+
 impl BackEnd {
     /// Registers on `conn` and serves the requests the gateway forwards there,
-    /// until the connection or the registration ends. Returns how long the
-    /// registration held.
+    /// until the connection or the registration ends. Returns how it ended.
     async fn serve(
         self: Arc<Self>,
         conn: &Connection,
         gateway: &watch::Sender<PeerAddr>,
         registration: &watch::Sender<Registration>,
-    ) -> Result<Duration, Ended> {
+    ) -> Result<Held, Ended> {
         let max = self.max_frame;
         let unreachable = |e: WireError| Ended::Unreachable(e.to_string());
         let (mut send, mut recv) = conn
@@ -253,7 +262,10 @@ impl BackEnd {
             _ = addresses => {}
             _ = requests => {}
         }
-        Ok(since.elapsed())
+        Ok(Held {
+            lasted: since.elapsed(),
+            silent: matches!(conn.close_reason(), Some(ConnectionError::TimedOut)),
+        })
     }
 
     /// Answers one request the gateway forwarded.

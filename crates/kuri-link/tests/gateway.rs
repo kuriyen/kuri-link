@@ -503,6 +503,54 @@ async fn a_back_end_registering_again_takes_its_requests_off_the_old_connection(
     home.shutdown().await;
 }
 
+/// How many times `node` registers within `window`.
+async fn registrations_within(node: &Node, window: Duration) -> usize {
+    let mut registration = node.registration().expect("behind a gateway");
+    registration.borrow_and_update();
+    let end = tokio::time::Instant::now() + window;
+    let mut count = 0;
+    while let Ok(Ok(())) = tokio::time::timeout_at(end, registration.changed()).await {
+        if *registration.borrow_and_update() == Registration::Registered {
+            count += 1;
+        }
+    }
+    count
+}
+
+/// Two back ends with one key take the registration from each other, and the
+/// gateway closes the connection of the one it took it from. Such short
+/// registrations count as failures, so the two trade it ever more slowly
+/// rather than every second.
+#[tokio::test(flavor = "multi_thread")]
+async fn two_back_ends_with_one_key_trade_the_registration_ever_more_slowly() {
+    let phones = Pairing::new(PeerSet::new());
+    let gateway = Gateway::new(PeerSet::new());
+    let home = gateway_node(&gateway, &phones, NodeKey::generate()).await;
+    let key = NodeKey::generate();
+    let first = paired_back_end(&gateway, &home, key.clone(), "first").await;
+    let second = back_end(home.bound_addr(), key, "second").await;
+
+    // With a second's wait each time, some 15 in 15 seconds; with the waits
+    // doubling, half as many.
+    let window = Duration::from_secs(15);
+    let (by_first, by_second) = tokio::join!(
+        registrations_within(&first, window),
+        registrations_within(&second, window)
+    );
+    assert!(
+        by_first > 0 && by_second > 0,
+        "they do not trade: {by_first} and {by_second}"
+    );
+    assert!(
+        by_first + by_second < 10,
+        "they registered {by_first} and {by_second} times in {window:?}"
+    );
+
+    first.shutdown().await;
+    second.shutdown().await;
+    home.shutdown().await;
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn a_back_end_with_no_relay_of_its_own_finds_its_gateway_through_the_gateways() {
     let mut config = iroh_relay::server::ServerConfig::default();
