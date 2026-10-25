@@ -406,6 +406,7 @@ impl NodeBuilder {
             builder = builder.transport_config(
                 QuicTransportConfig::builder()
                     .max_idle_timeout(Some(idle))
+                    .keep_alive_interval(crate::uplink::KEEP_ALIVE)
                     .build(),
             );
         }

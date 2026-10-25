@@ -588,6 +588,16 @@ relay from the new network. Such a request used to get its reply if the
 network came back within the idle timeout. This is what noticing a crashed
 back end within seconds costs.
 
+A back end behind a gateway notices from the silence on its own connection,
+within 5 to 6 seconds, that the gateway crashed and came back, and registers
+again. Until it has, the gateway answers requests for its apps with the fault
+`unavailable`. It sends a keep-alive every second and gives up on the
+connection after 4 seconds of silence, which suits a back end on the
+gateway's own network. One that reaches its gateway through a relay, or over
+WiFi that drops out, registers again whenever nothing passes for 3 to 4
+seconds, with `unavailable` meanwhile; and when a registration has held less
+than 30 seconds, it waits longer before each new try, up to 30 seconds.
+
 `client.path()` reports the path requests use now, `LinkRoute.direct` or
 `LinkRoute.relay`, with its round-trip time; it is `null` in process and while
 there is no connection. The **Measure** button in `examples/app` logs it once

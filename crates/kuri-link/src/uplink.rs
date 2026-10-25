@@ -31,7 +31,18 @@ const HELD: Duration = Duration::from_secs(30);
 /// takes the connection for lost. A back end's own timeout bounds both ends',
 /// so that a back end gone without a word stops taking requests within this,
 /// instead of after the 30 seconds that suit a phone on a weak network.
-pub(crate) const IDLE_TIMEOUT: Duration = Duration::from_secs(10);
+///
+/// A gateway that crashed and came back is noticed the same way, by the back
+/// end: the new gateway does not know the old connection. QUIC restarts the
+/// timer once more when the back end sends its next keep-alive, so the back
+/// end notices within [`KEEP_ALIVE`] and this, and registers again a wait
+/// later.
+pub(crate) const IDLE_TIMEOUT: Duration = Duration::from_secs(4);
+
+/// How often a back end, with nothing else to send, tells its gateway that it
+/// is there. Both run all the time and mostly share a network, so this can be
+/// far more often than iroh's 5 seconds, which suit a phone's battery.
+pub(crate) const KEEP_ALIVE: Duration = Duration::from_secs(1);
 
 /// Where a back end behind a gateway stands with it. More cases may come, so
 /// a `match` on it needs a wildcard arm.

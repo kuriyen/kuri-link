@@ -43,6 +43,18 @@ depend on a tag.
   moves to mobile data, where it used to get its reply if the network came
   back within the idle timeout. The connection closes with it, and every
   stream open on it ends too.
+- **Fixed: after its gateway crashed, a back end took about 15 seconds to
+  register again.** A gateway started in place of one that crashed does not
+  know the old connections, so a back end behind it found out only when its
+  connection timed out, and until then the gateway answered every request for
+  its apps `unavailable`. A back end now sends its gateway a keep-alive every
+  second, not every 5, and takes the connection for lost after 4 seconds of
+  silence, not 10, so it registers again 5 to 6 seconds after a crash. The
+  timeout is the gateway's too: it takes a back end that stops without a word
+  for gone after 4 seconds of silence, where it took 10. Both suit a back end
+  on the gateway's own network; one that reaches it through a relay, or over
+  WiFi that drops out, registers again whenever nothing passes for 3 to 4
+  seconds.
 
 ### Dart package
 

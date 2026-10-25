@@ -270,10 +270,22 @@ with ALPN kuri-link/1/<app>    pairing and authorizer       and register their a
 - **A back end gone without a word is noticed soon.** A back end that
   crashes, or loses power, sends no goodbye, and requests forwarded to it wait
   until its connection times out. A back end therefore sets that timeout to
-  10 seconds, instead of the 30 that suit a phone on a weak network; the
-  shorter of the two ends' timeouts applies. When it registers again on a new
+  4 seconds, instead of the 30 that suit a phone on a weak network, and sends
+  a keep-alive every second, so that a quiet connection stays up; the shorter
+  of the two ends' timeouts applies. When it registers again on a new
   connection, as after a restart, the gateway closes the old one at once, and
   requests still on it fail instead of waiting.
+- **So is a gateway that crashed.** A gateway started in place of one that
+  crashed does not know the old connections, and until a back end registers
+  again, the gateway answers requests for its apps `unavailable`. The same
+  timeout tells the back end: it registers again 5 to 6 seconds after the
+  crash.
+- **These timers suit a back end on the gateway's network,** the usual case
+  at home. One that reaches the gateway through a relay, or over WiFi that
+  drops out, registers again whenever nothing passes for 3 to 4 seconds, and
+  its apps answer `unavailable` until it has. A registration that held less
+  than 30 seconds counts as a failure, as when two back ends share a key, so
+  on such a path the waits between its tries can grow to 30 seconds.
 
 Wire additions, all within version 1:
 

@@ -237,6 +237,69 @@ async fn the_gateway_pairs_both_sides_and_forwards_between_them() {
     back_end.shutdown().await;
 }
 
+/// A gateway that crashed closes nothing, and the one started in its place
+/// does not know the old connections. The back end behind it finds out from
+/// the silence on its own connection, and must do so within seconds: until
+/// it registers again, the gateway answers every phone `unavailable`.
+#[tokio::test(flavor = "multi_thread")]
+async fn after_the_gateway_crashed_its_back_end_registers_again_within_seconds() {
+    let dir = Scratch::new();
+    let (gateway, _) = start(&dir.0);
+    let back_end_ticket = ticket(&dir.0, "back-end");
+    let back_end = Node::builder()
+        .relays(Relays::None)
+        .serve(
+            "echo",
+            Methods::new().unary("echo", |_, args| async move { Ok(args) }),
+        )
+        .behind_gateway(back_end_ticket.addr.clone())
+        .bind()
+        .await
+        .unwrap();
+    back_end
+        .pair_gateway(&back_end_ticket)
+        .await
+        .expect("pairs");
+    let mut registration = back_end.registration().unwrap();
+    tokio::time::timeout(
+        Duration::from_secs(10),
+        registration.wait_for(|r| *r == Registration::Registered),
+    )
+    .await
+    .expect("registers in time")
+    .unwrap();
+
+    // Quiet for longer than its idle timeout, the connection holds: the
+    // keep-alives carry it.
+    registration.borrow_and_update();
+    tokio::time::sleep(Duration::from_secs(10)).await;
+    assert!(
+        !registration.has_changed().unwrap(),
+        "the registration dropped while the connection was quiet"
+    );
+
+    // SIGKILL, as by a crash, and at once a new gateway on the same key and
+    // port, as a supervisor would start one.
+    drop(gateway);
+    let crashed = tokio::time::Instant::now();
+    let (_gateway, _) = start(&dir.0);
+    let served = format!("echo served by {}", back_end.id());
+    while !command(&dir.0, &["status"]).unwrap().contains(&served) {
+        assert!(
+            crashed.elapsed() < Duration::from_secs(40),
+            "the back end never registered again"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let after = crashed.elapsed();
+    assert!(
+        after < Duration::from_secs(10),
+        "the back end registered again {after:?} after the crash"
+    );
+
+    back_end.shutdown().await;
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn the_gateway_listens_on_one_address_when_told() {
     let dir = Scratch::new();
