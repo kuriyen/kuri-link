@@ -21,12 +21,22 @@
 //! starts and kept from then on, so that its address stays the same; `--port`
 //! picks one instead. `--bind ADDR` listens on that one address, on the same
 //! port: `0.0.0.0` keeps the gateway to IPv4, and `127.0.0.1` leaves it
-//! reachable from other machines only through its relays. `--relay`,
-//! `--port-mapping` and `--local-discovery` work as for
+//! reachable from other machines only through its relays. Any other address
+//! needs a `--relay` as well, or leave `--bind` out: when the address goes
+//! away, as when WiFi drops and its lease lapses, a gateway with no relay to
+//! fall back on loses its endpoint for good, and exits with an error.
+//! `--relay`, `--port-mapping` and `--local-discovery` work as for
 //! `kuri-link-echo-server`: a relay you run keeps the gateway reachable from
 //! outside, the router can be asked to forward its port, and mDNS announces
 //! it on the home network, where back ends then find it whatever its address
 //! there has become.
+//!
+//! Run the gateway under a supervisor that starts it again when it exits with
+//! an error, a few seconds later and without giving up: started while its
+//! `--bind` address is still gone, it cannot bind it and exits at once. With
+//! systemd, `Restart=on-failure` alone gives up within a second, since it
+//! restarts after 100 ms and stops after 5 starts in 10 seconds; add
+//! `RestartSec=5s`.
 //!
 //! `--relay-access ADDR` lets an `iroh-relay` on this machine ask the gateway
 //! whom to carry: give the relay `access.http.url = "http://ADDR/"`. It then

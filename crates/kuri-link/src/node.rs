@@ -189,6 +189,12 @@ impl NodeBuilder {
 
     /// Binds only a UDP socket at `addr`, instead of iroh's default sockets on
     /// every interface of both address families.
+    ///
+    /// Unless `addr` is unspecified (`0.0.0.0`) or loopback, give the node a
+    /// relay too ([`NodeBuilder::relays`]): when the address goes away, as when
+    /// WiFi drops and its lease lapses, iroh cannot bind it again, and with no
+    /// relay to fall back on it closes the node's endpoint for good (see
+    /// [`Node::closed`]).
     pub fn bind_addr(mut self, addr: SocketAddr) -> Self {
         self.bind = Some(addr);
         self

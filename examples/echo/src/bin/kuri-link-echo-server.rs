@@ -10,7 +10,10 @@
 //!
 //! The server listens on every interface, on a random port unless `--port`
 //! names one, and the ticket lists the addresses of those interfaces. `--bind`
-//! listens on one address instead.
+//! listens on one address instead. Unless that address is `0.0.0.0` or a
+//! loopback one, give a `--relay` too: when the address goes away, as when
+//! WiFi drops and its lease lapses, a server with no relay to fall back on
+//! loses its endpoint for good, and exits with an error.
 //!
 //! With `--port-mapping`, the server asks the router to forward its port from
 //! outside before it issues the ticket, and waits up to five seconds for an

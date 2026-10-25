@@ -51,6 +51,15 @@ depend on a tag.
 - `kuri-link-echo-server` exits with an error, too, when its endpoint closes
   by itself.
 
+### Documentation
+
+- `--bind` with a specific address, for the gateway and the echo server, and
+  `NodeBuilder::bind_addr` say to give a relay too, or to bind every address;
+  `0.0.0.0` and loopback addresses need none. The gateway's says to run it
+  under a supervisor that starts it again a few seconds later, without
+  giving up, since a gateway started while its address is still gone exits
+  at once: with systemd, `Restart=on-failure` and `RestartSec=5s`.
+
 ## 0.3.2 — 2026-10-25
 
 Upgrade to recover sooner when a connection goes quiet: a request to a back
